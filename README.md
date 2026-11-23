@@ -8,9 +8,9 @@ Route is in development. For a test installer, sign in to GitHub, open the [deve
 
 | Platform | With the development installer | Status |
 | --- | --- | --- |
-| Apple Silicon Mac | Open the Route `.pkg` and follow Installer. Open **Route** in Applications. | Unsigned development package. |
+| Apple Silicon Mac | Open the Route `.pkg` and follow Installer. Open **Route** in Applications. | Unsigned. Clean-machine installer and CLI fixture passed on Apple Silicon. |
 | Debian 13 | In the folder containing the extracted package for your processor, run `sudo apt install ./route-dev-*.deb`. Open **Route for Codex** from the application menu. | Container-tested on amd64 and arm64. Graphical qualification is pending. |
-| Windows | Run `Route-dev-setup.exe` and open **Route for Codex** from Start. | Development installer built on Windows. Installed-client qualification is pending. |
+| Windows | Run `Route-dev-setup.exe` and open **Route for Codex** from Start. | Clean-machine installer and CLI fixture passed on Windows Server 2025 x64. Windows 11 desktop qualification is pending. |
 
 In Route, paste your OpenAI project key, leave **Use Route for new Codex chats** selected, and click **Connect to Codex**. Verification uses two billable model requests. Once the connection test passes, start a **new local chat** in Codex. For example, open a project and ask “Which command runs this project’s tests?”
 

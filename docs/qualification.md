@@ -4,9 +4,9 @@ This is not a release announcement. Local fixture passes, a working installer pa
 
 | Target | Observed in this workspace | Still required |
 | --- | --- | --- |
-| macOS 26.2 arm64 | Caddy 2.11.9, Codex CLI 0.171.0-alpha.13. Real CLI credential helper, streamed tool calls, verified workspace change and resume. Signed-out CLI generated and rendered images with Sol and Astra. Extracted development installer ran the stdio image tool. | Clean install, normal-launch Desktop, login lifecycle, Desktop Stop and the remaining live matrix. |
+| macOS 26.2 arm64 | Caddy 2.11.9, Codex CLI 0.171.0-alpha.13. Real CLI credential helper, streamed tool calls, verified workspace change and resume. Signed-out CLI generated and rendered images with Sol and Astra. Extracted development installer ran the stdio image tool. | Fresh signed installer, normal-launch Codex Desktop, login lifecycle, Desktop Stop and the remaining live matrix. See the separate hosted installer fixture below. |
 | Debian 13 arm64 container | Relay authorization, streamed key rotation, setup challenge and mocked-store connection lifecycle passed. `.deb` built and its extracted executable ran. | Native desktop session, actual Secret Service, login, real clients and the complete release matrix. |
-| Windows | The [GitHub Actions build](https://github.com/samikd35/route-for-codex/actions/runs/45238433188) produced a per-user Windows development installer. The package includes the Credential Manager backend, socket control helper, Start menu shortcut, and a terminal launcher. | Native installation, GUI and CLI setup, credential storage, restart, uninstall and live client qualification. |
+| Windows | The [GitHub Actions build](https://github.com/samikd35/route-for-codex/actions/runs/45238433188) produced a per-user Windows development installer. The package includes the Credential Manager backend, socket control helper, Start menu shortcut, and a terminal launcher. | Interactive key entry in the GUI, live clients, restart and Windows 11 desktop qualification. See the hosted Server 2025 installer result below. |
 
 Development build: `0.1.0.dev0`. Initial macOS deterministic latency run: 40 alternating-order pairs, **0.273 ms p95** relayed-minus-direct time to first complete SSE event (limit 50 ms). `python -m tests.latency` emits per-pair first-event/total times, versions, sample count and pass/fail. These results do not measure OpenAI latency. `python -m tests.latency --live --pairs 3` explicitly opts into six paid requests, prompts for a key and reports a comparison, not a local threshold verdict.
 
@@ -33,6 +33,13 @@ The normal Route provider now registers its own `generate_image` tool. In an iso
 Qualify a platform only after every required check passes there. The deterministic fixtures use dummy credentials. The live image checks above used billable OpenAI requests and an isolated Codex configuration.
 
 ## Fresh macOS and Windows installer checks
+
+Both clean-machine fixtures passed on November 23, 2026, using stock Codex CLI `0.171.0-alpha.13`. The live-key steps were skipped on this run. The production package still uses the single Route provider. [Full workflow run](https://github.com/samikd35/route-for-codex/actions/runs/45247655313)
+
+| Fresh runner | Observed result | Installer SHA-256 |
+| --- | --- | --- |
+| [macOS 26.7.2 arm64](https://github.com/samikd35/route-for-codex/actions/runs/45247655313/job/137950533799) | Applications launch, login-shell command, Keychain recovery, signed-out CLI reply, Forget and missing-pip regression passed. | `7ca284157ab53892a5f3f24ab259b827c91522cde652b98c71d18876d3fa3baa` |
+| [Windows Server 2025 x64, build 26100](https://github.com/samikd35/route-for-codex/actions/runs/45247655313/job/137951183483) | Start launch, fresh PATH, private directory validation, Credential Manager recovery, signed-out CLI reply, Forget, uninstall and missing-pip regression passed. | `70451bceb057e3ccbc6be69cae5671a0ac748ad66a750ccf9e901af2274f88d9` |
 
 The installer workflow downloads the exact build artifact on a second GitHub-hosted VM for each OS. The test installs the package, resolves `route-for-codex status` using the login PATH, opens the installed setup window, and runs a signed-out stock Codex CLI. Each run logs the package SHA-256, OS, architecture and CLI version. Windows also checks uninstall and PATH removal. Both runners exercise the missing-pip source-install regression.
 
