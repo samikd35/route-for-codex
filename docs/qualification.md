@@ -31,3 +31,13 @@ The normal Route provider now registers its own `generate_image` tool. In an iso
 5. `tests/test_interrupt.py` verifies downstream disconnect, an incomplete upstream stream after a tool call, no relay replay, explicit retry and concurrent request isolation. It is a transport check. Run `python -m tests.controls stop /path/to/new-fixture` and launch the client with the printed disposable `CODEX_HOME`. Send a prompt, press Stop before 30 seconds, and observe the disconnect count. Repeat with `drop` and a fresh directory: expect a client interruption after the tool call, one upstream request, and a second request only after explicit retry. Repeat from both clients. Run the local and live benchmarks separately and retain their JSON.
 
 Qualify a platform only after every required check passes there. The deterministic fixtures use dummy credentials. The live image checks above used billable OpenAI requests and an isolated Codex configuration.
+
+## Fresh macOS and Windows installer checks
+
+The installer workflow downloads the exact build artifact on a second GitHub-hosted VM for each OS. The test installs the package, resolves `route-for-codex status` using the login PATH, opens the installed setup window, and runs a signed-out stock Codex CLI. Each run logs the package SHA-256, OS, architecture and CLI version. Windows also checks uninstall and PATH removal. Both runners exercise the missing-pip source-install regression.
+
+- The default run uses a local Responses fixture. It supplies a synthetic catalog and credential to the packaged Caddy, then exercises the installed `test` command, default registration, a fresh Codex turn and `forget`. It makes no billable requests.
+- For real first-time setup, set the repository Actions secret `ROUTE_INSTALL_TEST_KEY` to a dedicated test-project key with access to `gpt-6.2-sol`. In **Actions → Build development installers → Run workflow**, choose `main` and enable **Perform billable API-key qualification on both fresh runners**. Each platform runs the installed `connect` command, completes the two-request challenge, disconnects, recovers the key from the native credential store, and checks the exact answer to a new Codex prompt. Budget for at least three model requests per platform. A missing secret fails the requested live check.
+- The setup window check opens Route through Applications or Start. Interactive key entry in that window and a chat inside Codex Desktop remain separate manual qualifications. macOS signing and notarization also remain open.
+
+[Installer runs and artifacts](https://github.com/samikd35/route-for-codex/actions/workflows/build-installers.yml)

@@ -161,7 +161,9 @@ class Prompt:
             from tkinter import simpledialog
             value = simpledialog.askstring('Route', message, show='*' if secret else None)
         else:
-            value = (getpass.getpass if secret else input)(message + ': ')
+            # Windows getpass reads the console even when stdin is a pipe.
+            # Interactive entry stays masked. Redirected input is never echoed.
+            value = (getpass.getpass if secret and sys.stdin.isatty() else input)(message + ': ')
         if not value:
             raise RuntimeError('Cancelled')
         return value.strip()

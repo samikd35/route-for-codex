@@ -1,10 +1,16 @@
 name: Build development installers
 on:
   workflow_dispatch:
+    inputs:
+      live:
+        description: Perform billable API-key qualification on both fresh runners
+        type: boolean
+        default: false
   push:
     branches: [main]
     paths:
       - '.github/workflows/build-installers.yml'
+      - 'tests/**'
       - 'tools/**'
       - 'route/**'
       - 'pyproject.toml'
@@ -61,3 +67,53 @@ jobs:
             dist/*.pkg
             dist/*.exe
           if-no-files-found: error
+
+  clean-install:
+    needs: native
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: route-${{ runner.os }}-development
+          path: artifact
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install the pinned stock Codex CLI
+        shell: bash
+        run: |
+          npm install --prefix "$RUNNER_TEMP/qualification" --no-audit --no-fund @openai/codex@0.171.0-alpha.13
+          node -e 'const fs = require("node:fs"), p = require("node:path"); fs.appendFileSync(process.env.GITHUB_PATH, p.join(process.env.RUNNER_TEMP, "qualification", "node_modules", ".bin") + "\n")'
+      - name: Install macOS package and open Route from Applications
+        if: runner.os == 'macOS'
+        run: bash tests/install-macos.sh artifact
+      - name: Install per-user Windows package and open Route from Start
+        if: runner.os == 'Windows'
+        run: ./tests/install-windows.ps1 -Artifact artifact
+      - name: Test installed Route through a signed-out Codex CLI with a local fixture
+        shell: pwsh
+        run: |
+          $exe = if ($IsMacOS) { '/Applications/Route.app/Contents/MacOS/route' } else { "$env:LOCALAPPDATA\Programs\RouteForCodex\route.exe" }
+          python -m tests.installed $exe
+      - name: Connect a real project key and repeat the Codex turn after credential recovery
+        if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.live
+        env:
+          ROUTE_INSTALL_TEST_KEY: ${{ secrets.ROUTE_INSTALL_TEST_KEY }}
+        shell: pwsh
+        run: |
+          $exe = if ($IsMacOS) { '/Applications/Route.app/Contents/MacOS/route' } else { "$env:LOCALAPPDATA\Programs\RouteForCodex\route.exe" }
+          python -m tests.installed $exe --live
+      - name: Remove Windows package and check shortcuts and PATH
+        if: runner.os == 'Windows' && success()
+        run: ./tests/install-windows.ps1 -Artifact artifact -Uninstall
+      - name: Exercise the interrupted source-install regression
+        run: python -m unittest -v tests.test_install
