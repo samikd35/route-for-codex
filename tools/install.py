@@ -22,13 +22,23 @@ def main():
     python = bindir / ('python.exe' if windows else 'python')
     command = bindir / ('route-for-codex.exe' if windows else 'route-for-codex')
     if not python.is_file():
-        venv.create(env, with_pip=True)
+        venv.create(env, with_pip=False, symlinks=not windows)
+    # An interrupted install can leave the interpreter in place before pip is seeded.
+    probe = subprocess.run([str(python), '-I', '-m', 'pip', '--version'],
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    if probe.returncode:
+        print('Setting up pip in the Route virtual environment…', flush=True)
+        seed = subprocess.run([str(python), '-I', '-m', 'ensurepip', '--default-pip'])
+        if seed.returncode:
+            parser.exit(1, f'Could not bootstrap pip in {env}. See the Python error above. '
+                        'To use another supported Python, move this .venv aside and rerun '
+                        'tools/install.py with that interpreter.\n')
     # Stage the verified platform binary before pip collects the package data.
     bundle = [str(python), str(root / 'tools/bundle.py')]
     if args.from_go:
         bundle.append('--from-go')
     subprocess.run(bundle, check=True)
-    subprocess.run([str(python), '-m', 'pip', 'install', '-e', str(root)], check=True)
+    subprocess.run([str(python), '-I', '-m', 'pip', 'install', '-e', str(root)], check=True)
     if args.connect:
         subprocess.run([str(command), 'connect'], check=True)
     else:
