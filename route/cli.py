@@ -37,23 +37,44 @@ def vault():
     return Keyring()
 
 
+def windows_home(path):
+    import pywintypes
+    import win32api
+    import win32file
+    import win32security as sec
+
+    token = sec.OpenProcessToken(win32api.GetCurrentProcess(), sec.TOKEN_QUERY)
+    user = sec.ConvertSidToStringSid(sec.GetTokenInformation(token, sec.TokenUser)[0])
+    # Elevated processes may default to Administrators as owner. Set the user
+    # and inheritable private ACL atomically, before any state files exist.
+    path.parent.mkdir(parents=True, exist_ok=True)
+    attrs = pywintypes.SECURITY_ATTRIBUTES()
+    attrs.SECURITY_DESCRIPTOR = sec.ConvertStringSecurityDescriptorToSecurityDescriptor(
+        f'O:{user}D:P(A;OICI;FA;;;{user})(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)', 1)
+    try:
+        win32file.CreateDirectory(str(path), attrs)
+    except pywintypes.error as exc:
+        if exc.winerror != 183:  # ERROR_ALREADY_EXISTS
+            raise
+    sd = sec.GetFileSecurity(str(path), sec.OWNER_SECURITY_INFORMATION | sec.DACL_SECURITY_INFORMATION)
+    acl = sd.GetSecurityDescriptorDacl()
+    # Python's mode-0700 directories grant OWNER RIGHTS (S-1-3-4).
+    # That principal is private only after checking the owner explicitly.
+    allowed = {user, 'S-1-3-4', 'S-1-5-32-544', 'S-1-5-18'}
+    if (not path.is_dir() or sec.ConvertSidToStringSid(sd.GetSecurityDescriptorOwner()) != user or acl is None
+            or any(sec.ConvertSidToStringSid(acl.GetAce(i)[-1]) not in allowed for i in range(acl.GetAceCount()))):
+        raise RuntimeError('Route requires a private Windows directory owned by the current user')
+
+
 class Session:
     def __init__(self):
         self.home = Path(os.environ.get('ROUTE_HOME', Path.home() / '.route')).resolve()
-        if sys.platform == 'win32' and sys.version_info < (3, 13):
-            raise RuntimeError('Windows requires Python 3.13+ for private directory creation')
-        self.home.mkdir(mode=0o700, parents=True, exist_ok=True)
         if sys.platform == 'win32':
-            import win32api, win32security as sec
-            sd = sec.GetFileSecurity(str(self.home), sec.OWNER_SECURITY_INFORMATION | sec.DACL_SECURITY_INFORMATION)
-            current = sec.GetTokenInformation(sec.OpenProcessToken(win32api.GetCurrentProcess(), 8), sec.TokenUser)[0]
-            acl = sd.GetSecurityDescriptorDacl()
-            allowed = {sec.ConvertSidToStringSid(current), 'S-1-5-32-544', 'S-1-5-18'}
-            if (sd.GetSecurityDescriptorOwner() != current or acl is None or
-                any(sec.ConvertSidToStringSid(acl.GetAce(i)[-1]) not in allowed for i in range(acl.GetAceCount()))):
-                raise RuntimeError('Route requires a private Windows directory')
-        elif self.home.stat().st_uid != os.getuid() or self.home.stat().st_mode & 0o077:
-            raise RuntimeError('Route home must be private to your user (mode 0700)')
+            windows_home(self.home)
+        else:
+            self.home.mkdir(mode=0o700, parents=True, exist_ok=True)
+            if self.home.stat().st_uid != os.getuid() or self.home.stat().st_mode & 0o077:
+                raise RuntimeError('Route home must be private to your user (mode 0700)')
         self.file = self.home / 'state.json'
         self.admin = self.home / 'admin.sock'
         self.credential = self.home / 'relay.token'

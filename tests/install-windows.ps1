@@ -35,6 +35,12 @@ $where = & "$env:SystemRoot\System32\where.exe" route-for-codex
 if ($LASTEXITCODE -ne 0 -or @($where)[0] -ne "$app\bin\route-for-codex.cmd") { throw 'Installed command missing from fresh PATH' }
 $status = & $env:ComSpec /d /c 'route-for-codex status'
 if ($LASTEXITCODE -ne 0 -or $status -ne 'Disconnected.') { throw 'First status was not Disconnected' }
+# A different user must never acquire access through an existing shared folder.
+$shared = New-Item -ItemType Directory -Path (Join-Path $env:RUNNER_TEMP 'shared-route-test')
+& icacls $shared.FullName /grant '*S-1-1-0:(OI)(CI)R' | Out-Null
+if ($LASTEXITCODE -ne 0) { throw 'Could not prepare the shared directory check' }
+$rejection = & $exe --home $shared.FullName status 2>&1
+if ($LASTEXITCODE -eq 0 -or "$rejection" -notmatch 'private Windows directory') { throw 'Expected shared Route home to be rejected' }
 Start-Process -FilePath $shortcut
 Add-Type -Namespace RouteTest -Name Window -MemberDefinition @'
 [System.Runtime.InteropServices.DllImport("user32.dll", CharSet=System.Runtime.InteropServices.CharSet.Unicode)]
