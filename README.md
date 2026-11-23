@@ -31,24 +31,18 @@ Use Python 3.11+ with Tk (3.13+ on Windows), a recent Codex CLI with `codex debu
 ```sh
 git clone https://github.com/samikd35/route-for-codex.git
 cd route-for-codex
-python3 -m venv .venv
-.venv/bin/python tools/bundle.py
-.venv/bin/python -m pip install -e .
-.venv/bin/route-for-codex connect
+python3 tools/install.py --connect
 codex
 ```
 
-On Apple Silicon, if the Homebrew bottle has moved on, use `.venv/bin/python tools/bundle.py --from-go` with Go installed. On Windows, clone the same repository and from PowerShell in the checkout run:
+Keep the checkout in place. Codex launches Route from that environment. Omit `--connect` to install without entering a key. On Apple Silicon, if the Homebrew bottle has moved on, add `--from-go` with Go installed. On Windows, clone the same repository and from PowerShell in the checkout run:
 
 ```powershell
-py -3.13 -m venv .venv
-.\.venv\Scripts\python.exe tools\bundle.py
-.\.venv\Scripts\python.exe -m pip install -e .
-.\.venv\Scripts\route-for-codex.exe connect
+py -3.13 tools\install.py --connect
 codex
 ```
 
-For the setup window, use `setup` in place of `connect`. Use `select` to choose another eligible model and `test` to repeat verification. To run the source tests, use `.venv/bin/python -m unittest discover -v`. They use temporary profiles and dummy credentials. The coding fixture runs the actual Codex executable.
+For the setup window on macOS or Linux, run `.venv/bin/route-for-codex setup`. On Windows use `.\.venv\Scripts\route-for-codex.exe setup`. Use `select` to choose another eligible model and `test` to repeat verification. To run the source tests, use `.venv/bin/python -m unittest discover -v`. They use temporary profiles and dummy credentials. The coding fixture runs the actual Codex executable.
 
 The upstream key goes to the OS credential store, or remains in relay memory for a session-only connection. The credential helper reads only a local token from the private Route directory. Caddy consumes its configuration on stdin, disables config persistence and emits no request logs. Rotation reloads it via a private filesystem socket. `CODEX_HOME` selects the Codex profile; `ROUTE_HOME` selects private Route state (default `~/.route`). These overrides do **not** isolate the OS keychain: use a separate OS account for live qualification. Disconnect or Forget before removing an installed build.
 
@@ -77,6 +71,6 @@ docker buildx build --output type=local,dest=dist -f tools/linux.Dockerfile .
 
 For design and acceptance criteria, see [architecture](ARCHITECTURE.md), [spec](.scratch/relay/spec.md), and [tickets](.scratch/relay/issues/).
 
-Maintainers can run **Build development installers** in GitHub Actions to build test artifacts. Distribute the qualified native packages and their SHA-256 checksums together in a versioned GitHub Release once each supported client and OS passes the [release checks](docs/qualification.md).
+The [installer workflow](https://github.com/samikd35/route-for-codex/actions/workflows/build-installers.yml) builds development packages after packaging or application changes on `main`. Sign in to GitHub, open a successful run, and download the artifact for your platform. Maintainers can also start a build manually. The stable release will include the qualified native packages and their SHA-256 checksums together once each supported client and OS passes the [release checks](docs/qualification.md).
 
 Route source is licensed under [MIT](LICENSE). The bundled Caddy relay carries its own [Apache 2.0 license](route/bin/LICENSE).
