@@ -1,0 +1,53 @@
+name: Build development installers
+on: workflow_dispatch
+
+permissions:
+  contents: read
+
+jobs:
+  debian:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build --output type=local,dest=dist -f tools/linux.Dockerfile .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: route-debian-development
+          path: dist/*.deb
+          if-no-files-found: error
+
+  native:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+          cache: false
+      - run: python tools/bundle.py --from-go
+      - run: python -m pip install . "pyinstaller>=6.12,<7"
+      - if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          if (-not (Get-Command ISCC -ErrorAction SilentlyContinue)) {
+            $inno = Join-Path ${env:ProgramFiles(x86)} 'Inno Setup 6'
+            if (-not (Test-Path "$inno\ISCC.exe")) { throw 'Inno Setup 6 is required' }
+            $inno | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+          }
+      - run: python tools/package.py
+      - if: runner.os == 'macOS'
+        run: python tools/smoke_pkg.py dist/*.pkg
+      - uses: actions/upload-artifact@v4
+        with:
+          name: route-${{ runner.os }}-development
+          path: |
+            dist/*.pkg
+            dist/*.exe
+          if-no-files-found: error

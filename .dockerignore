@@ -1,0 +1,12 @@
+*
+!pyproject.toml
+!LICENSE
+!route
+!route/*.py
+!route/bin
+route/bin/*
+!route/bin/LICENSE
+!tools
+!tools/*.py
+!tests
+!tests/*.py
