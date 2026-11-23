@@ -4,13 +4,13 @@ Route lets you use your OpenAI project key for coding and image generation in lo
 
 ## Install and connect
 
-Route is in development. Testers can use a development installer built for their OS and processor. A public stable release is pending. Install a compatible Codex client first. The CLI used for qualification was `0.171.0-alpha.13`; to check your CLI, run `codex --version` and `codex debug models --bundled`.
+Route is in development. For a test installer, sign in to GitHub, open the [development builds](https://github.com/samikd35/route-for-codex/actions/workflows/build-installers.yml), choose a completed build, and download and unzip the artifact for your OS. You can also [install directly from source](#run-from-source). A public stable release is pending. Install a compatible Codex client first. The CLI used for qualification was `0.171.0-alpha.13`. To check yours, run `codex --version` and `codex debug models --bundled`. [Install Codex CLI](https://developers.openai.com/codex/cli/)
 
 | Platform | With the development installer | Status |
 | --- | --- | --- |
 | Apple Silicon Mac | Open the Route `.pkg` and follow Installer. Open **Route** in Applications. | Unsigned development package. |
-| Debian 13 | From the download directory, run `sudo apt install ./route-dev-aarch64.deb` on arm64. Open **Route for Codex** from the application menu. | Container-tested. Graphical qualification is pending. |
-| Windows | Once a native build is available, run `Route-dev-setup.exe` and open **Route for Codex** from Start. | Installer recipe available. Native qualification is pending. |
+| Debian 13 | In the folder containing the extracted package for your processor, run `sudo apt install ./route-dev-*.deb`. Open **Route for Codex** from the application menu. | Container-tested on amd64 and arm64. Graphical qualification is pending. |
+| Windows | Run `Route-dev-setup.exe` and open **Route for Codex** from Start. | Development installer built on Windows. Installed-client qualification is pending. |
 
 In Route, paste your OpenAI project key, leave **Use Route for new Codex chats** selected, and click **Connect to Codex**. Verification uses two billable model requests. Once the connection test passes, start a **new local chat** in Codex. For example, open a project and ask “Which command runs this project’s tests?”
 
@@ -50,7 +50,7 @@ The [combined-picker proof](docs/combined-picker-proof.md) runs separately in a 
 
 ## Generate an image using only your API key
 
-1. From this checkout, run `.venv/bin/route-for-codex connect`, enter your project key and select **Use Route by default**. If you already connected with the previous source build, install the updated dependencies with `uv pip install -e .` and run `.venv/bin/route-for-codex reconnect` to register the image tool. The key needs access to the selected coding model and `gpt-image-2`.
+1. From this checkout, run `.venv/bin/route-for-codex connect`, enter your project key and select **Use Route by default**. If you already connected with the previous source build, install the updated dependencies with `.venv/bin/python -m pip install -e .` and run `.venv/bin/route-for-codex reconnect` to register the image tool. The key needs access to the selected coding model and `gpt-image-2`.
 2. Restart Codex and open a fresh local workspace. Choose Sol or Astra from the Route provider. In either client, ask **Use Route’s generate_image tool to create a red kite above a blue lake. Save it as kite.png and make an index.html that displays it.** Approve the tool call if prompted. Each generation uses your API project.
 3. Open the resulting `index.html` and confirm the illustration is visible. The [repeatable image check and results](docs/api-key-only-images.md) include the exact qualification prompt and verified image hashes.
 
@@ -61,9 +61,9 @@ The [combined-picker proof](docs/combined-picker-proof.md) runs separately in a 
 .venv/bin/python tools/package.py
 ```
 
-Build on the target OS. macOS produces an unsigned `.pkg` with Route.app, a CLI and a login agent. Debian produces a `.deb` with an application menu entry, XDG login entry and `/usr/bin/route-for-codex` (so it doesn't shadow the system network utility). Windows uses Go, Python 3.13+ and Inno Setup `ISCC` to build a per-user installer with Start menu and login shortcuts; that build is unverified. In development environments the `login` action can be exercised explicitly; no login hook is installed by editable installation.
+Build on the target OS. macOS produces an unsigned `.pkg` with Route.app, a CLI and a login agent. Debian produces a `.deb` with an application menu entry, XDG login entry and `/usr/bin/route-for-codex`. Windows uses Go, Python 3.13+ and Inno Setup `ISCC` to build a per-user installer with Start menu and login shortcuts. An editable source installation supports the `login` action when explicitly invoked.
 
-The Linux container build uses digest-pinned Python and Caddy images, runs relay and lifecycle tests, and extracts the Debian package to check its executable. From a fresh checkout:
+The Linux container build uses digest-pinned Python and Caddy images, runs relay and lifecycle tests, and installs the Debian package in the container to check its terminal command. From a fresh checkout:
 
 ```sh
 docker buildx build --output type=local,dest=dist -f tools/linux.Dockerfile .
