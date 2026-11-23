@@ -1,6 +1,7 @@
-"""Exercise a native installation with stock Codex. The fixture uses no OS credentials."""
+"""Exercise a native installation with stock Codex on a disposable test account."""
 import argparse
 from contextlib import contextmanager, nullcontext
+from http.server import BaseHTTPRequestHandler, HTTPServer
 import json
 import os
 from pathlib import Path
@@ -11,6 +12,7 @@ import socket
 import subprocess
 import sys
 import tempfile
+import threading
 import tomllib
 from unittest.mock import patch
 
@@ -33,8 +35,47 @@ def run(args, env, cwd, *, answers=None, expected=0, timeout=150):
     result = subprocess.run(args, input=answers, stdin=subprocess.DEVNULL if answers is None else None,
                             env=env, cwd=cwd, capture_output=True, text=True, encoding='utf-8',
                             errors='replace', timeout=timeout)
-    require(result.returncode == expected, f'{Path(args[0]).name} {args[1]} exited {result.returncode}')
+    if result.returncode != expected:
+        known = next((msg for msg in ('Caddy could not start', 'Caddy did not become ready',
+                     'Credential rejected', 'Access denied', 'Rate limit reached', 'No selected model',
+                     'Route requires a private Windows directory', 'Invalid credential format',
+                     'Could not locate the installed Codex CLI', 'Unlock the OS credential store')
+                     if msg in result.stderr), '')
+        raise RuntimeError(f'{Path(args[0]).name} {args[1]} exited {result.returncode}. {known}')
     return result.stdout.strip()
+
+
+def check_dummy_key(exe, env, project):
+    """Drive connect and the OS vault while keeping discovery entirely offline."""
+    require(os.environ.get('RUNNER_ENVIRONMENT') == 'github-hosted' and os.environ.get('GITHUB_ACTIONS') == 'true',
+            'The native credential check requires a disposable hosted account')
+    attempted = []
+
+    class OfflineProxy(BaseHTTPRequestHandler):
+        def do_CONNECT(self):
+            attempted.append(self.path)
+            self.send_error(503, 'Offline installer fixture')
+
+        def log_message(self, *args):
+            pass
+
+    with HTTPServer(('127.0.0.1', 0), OfflineProxy) as server:
+        worker = threading.Thread(target=server.serve_forever, daemon=True)
+        worker.start()
+        try:
+            proxy = f'http://127.0.0.1:{server.server_port}'
+            offline = dict(env, https_proxy=proxy, HTTPS_PROXY=proxy, NO_PROXY='', no_proxy='')
+            run([exe, 'connect'], offline, project, answers=DUMMY_KEY + '\nn\n', expected=1)
+            require(attempted == ['api.openai.com:443'], 'Setup did not reach model discovery using the dummy key')
+            config = tomllib.loads((Path(env['CODEX_HOME']) / 'config.toml').read_text())
+            require('model_provider' not in config, 'Failed discovery changed the default provider')
+            require('saved on this device' in run([exe, 'disconnect'], env, project), 'Native key storage failed')
+            require(run([exe, 'reconnect'], env, project) == 'Reconnected.', 'Native key recovery failed')
+        finally:
+            server.shutdown()
+            worker.join()
+            require(run([exe, 'forget'], env, project) == 'Disconnected.', 'Dummy credential cleanup failed')
+    print('Public connect accepted a dummy key, preserved defaults on discovery failure, and recovered the key from the OS store.', flush=True)
 
 
 @contextmanager
@@ -117,6 +158,8 @@ def exercise(exe, codex, root, live):
     marker = 'route-' + secrets.token_hex(12)
     mode = 'live' if live else 'fixture'
     print(f'{platform.platform()} {platform.machine()} | {run([codex, "--version"], env, project)} | {mode}', flush=True)
+    if not live:
+        check_dummy_key(exe, env, project)
     with nullcontext() if live else fixture(exe, codex, env, project, marker):
         try:
             if live:
