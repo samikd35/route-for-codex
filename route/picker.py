@@ -11,6 +11,7 @@ import threading
 import time
 import urllib.request
 
+from . import client_catalog
 from .models import branded_rows, codex_path, eligible
 from .relay import CADDY, combined_configuration, control
 from .settings import change, config, write
@@ -39,6 +40,43 @@ def desktop_clients():
     return (Path('/opt/Codex/resources/codex'),)
 
 
+def binary_version(binary):
+    return subprocess.check_output([binary, '--version'], text=True, timeout=10).split()[-1].split('-')[0]
+
+
+def installed_clients(version, service):
+    cli = Path(codex_path())
+    clients = [('Codex CLI', cli, version)]
+    for app in desktop_clients():
+        if app.is_file():
+            clients.append(('Codex Desktop', app, binary_version(app)))
+    if service:
+        running = service['appServerVersion'].split('-')[0]
+        candidates = [path for _, path, version in clients if version == running]
+        if service.get('managedCodexPath'):
+            candidates.insert(0, Path(service['managedCodexPath']))
+        binary = next((path for path in candidates if path.is_file() and binary_version(path) == running), None)
+        if binary is None:
+            raise RuntimeError('The running Codex service and its installed package disagree on the version')
+        clients.append(('Codex service', binary, running))
+    return clients
+
+
+def compatible_rows(binary, saved):
+    accessible = saved.get('accessible_ids', [row['slug'] for row in saved['models']])
+    ids = {'data': [{'id': slug} for slug in accessible]}
+    bundled = json.loads(subprocess.check_output([binary, 'debug', 'models', '--bundled'], timeout=15))
+    return branded_rows(eligible(ids, bundled)['models'])
+
+
+def refresh_rows(session, requested):
+    saved = json.loads((session.home / 'models.json').read_text())
+    for _, binary, version in installed_clients(client_version(), client_catalog.daemon_info()):
+        if requested == version:
+            return compatible_rows(binary, saved)
+    raise RuntimeError('Requested Codex version is not installed')
+
+
 def check_catalog(base, version, token, rows):
     request = urllib.request.Request(base + '/models?client_version=' + version,
                                      headers={'X-Route-Token': 'Bearer ' + token})
@@ -63,7 +101,8 @@ def install(session, port, helper):
         raise RuntimeError('An existing model_catalog_json setting controls the Codex picker')
     version = client_version()
     native = native_login()
-    rows = branded_rows(json.loads((session.home / 'models.json').read_text())['models'])
+    saved = json.loads((session.home / 'models.json').read_text())
+    rows = compatible_rows(Path(codex_path()), saved) if 'accessible_ids' in saved else branded_rows(saved['models'])
     token = secrets.token_urlsafe()
     sock = session.home / ('g' + secrets.token_hex(3))
     lease = session.home / 'picker.token'
@@ -71,15 +110,13 @@ def install(session, port, helper):
     cfg = dict(Socket=str(sock), Lease=str(lease), GatewayToken=token, RouteKey=legacy_token,
                NativeURL=NATIVE_URL, RouteURL=f'http://127.0.0.1:{port}/v1',
                Catalogs={version: rows})
-    # Desktop can bundle a different CLI build from the one found on PATH.
-    for app in desktop_clients():
-        if app.is_file():
-            other = subprocess.check_output([app, '--version'], text=True).split()[-1].split('-')[0]
-            if other not in cfg['Catalogs']:
-                bundled = json.loads(subprocess.check_output([app, 'debug', 'models', '--bundled']))
-                ids = {'data': [{'id': row['slug'].removeprefix('route-')} for row in rows]}
-                cfg['Catalogs'][other] = branded_rows(eligible(ids, bundled)['models'])
-    fingerprint = hashlib.sha256(json.dumps([cfg['Catalogs'], native, helper, sys.executable],
+    service = client_catalog.daemon_info()
+    clients = installed_clients(version, service)
+    cfg['CatalogCommand'] = [sys.executable, *helper[:-1], 'catalog-for-version']
+    for _, binary, other in clients:
+        if other not in cfg['Catalogs']:
+            cfg['Catalogs'][other] = compatible_rows(binary, saved)
+    fingerprint = hashlib.sha256(json.dumps([cfg['Catalogs'], native, helper, cfg['CatalogCommand']],
                                             sort_keys=True).encode()).hexdigest()
     gateway_port = session.state.get('picker_port')
     if (gateway_port and current.get('model_provider') == PROVIDER
@@ -89,6 +126,7 @@ def install(session, port, helper):
         except (OSError, ValueError, RuntimeError):
             pass
         else:
+            client_catalog.verify(clients, cfg['Catalogs'], native, service)
             return
     binary = CADDY.with_name('dispatcher.exe' if os.name == 'nt' else 'dispatcher')
     # A background process inheriting the project directory prevents its removal on Windows.
@@ -133,3 +171,4 @@ def install(session, port, helper):
         child.wait()
         raise
     threading.Thread(target=child.wait, daemon=True).start()
+    client_catalog.verify(clients, cfg['Catalogs'], native, service)

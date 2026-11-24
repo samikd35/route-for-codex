@@ -17,6 +17,8 @@ from tests.fixture import free_port, provider
 class SetupTest(unittest.TestCase):
     def setUp(self):
         # Unit profiles never inherit the developer's real account or client version.
+        self.enterContext(patch('route.picker.installed_clients', return_value=[]))
+        self.enterContext(patch('route.picker.client_catalog.verify'))
         self.enterContext(patch('route.picker.desktop_clients', return_value=()))
         self.enterContext(patch('route.picker.client_version', return_value='0.171.0'))
         self.enterContext(patch('route.picker.native_login', return_value=False))

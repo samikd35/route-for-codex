@@ -30,7 +30,9 @@ def discover(key):
         listed = json.load(response)
     codex = codex_path()
     catalog = json.loads(subprocess.check_output([codex, 'debug', 'models', '--bundled']))
-    return eligible(listed, catalog)
+    result = eligible(listed, catalog)
+    result["accessible_ids"] = sorted({row["id"] for row in listed["data"]})
+    return result
 
 
 def codex_path():

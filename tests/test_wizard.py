@@ -14,7 +14,7 @@ class WizardTest(unittest.TestCase):
     def test_retry_then_resume_without_repeating_verification(self):
         with tempfile.TemporaryDirectory(dir='/tmp') as root, patch.dict(os.environ, ROUTE_HOME=root, CODEX_HOME=root), \
                 patch('route.cli.PORT', free_port()), patch('route.cli.vault'), patch('route.cli.check') as check, \
-                patch('route.picker.native_login', return_value=False), patch('route.picker.desktop_clients', return_value=()), \
+                patch('route.client_catalog.verify'), patch('route.picker.native_login', return_value=False), patch('route.picker.desktop_clients', return_value=()), \
                 patch('route.picker.client_version', return_value='0.171.0'), patch('sys.stdin.isatty', return_value=True), \
                 patch('route.cli.discover') as discover, redirect_stdout(io.StringIO()) as output, redirect_stderr(io.StringIO()):
             prompt = Mock()

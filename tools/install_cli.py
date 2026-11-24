@@ -59,7 +59,7 @@ def stage_gateway():
     source = hashlib.sha256()
     for file in sorted([*ROOT.glob('dispatcher/*.go'), ROOT / 'dispatcher/go.mod']):
         source.update(file.name.encode() + b'\0' + file.read_bytes().replace(b'\r\n', b'\n'))
-    if source.hexdigest() != '9c829f683021e6e89790f42efc100c67fd47c62989ca33724a955120d372e26d':
+    if source.hexdigest() != 'e37c584b0dbf9690b684f0bbbba1a5553d7659b79a9ac430fbca019515339d51':
         with stage('Building the local gateway'):
             subprocess.run([sys.executable, ROOT / 'tools/build_dispatcher.py'], check=True)
         return
@@ -71,7 +71,7 @@ def stage_gateway():
     target = ROOT / 'route/bin' / ('dispatcher.exe' if WINDOWS else 'dispatcher')
     print('Downloading the verified gateway…', flush=True)
     download('https://github.com/samikd35/route-for-codex/releases/download/'
-             'gateway-eecb429108a2efd58646d546241cfc4a5b6d7287/' + asset, target, sums[asset])
+             'gateway-56f861ddf351cbb3fdeeb0f936c4912ec456c35b/' + asset, target, sums[asset])
     target.chmod(0o755)
 
 

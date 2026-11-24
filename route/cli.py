@@ -342,7 +342,7 @@ def execute(s, action, prompt, *, initial_key=None, progress=lambda label: nullc
         s.save()
     else:
         print('Your connection was already verified.', flush=True)
-    with progress('Registering models with Codex'):
+    with progress('Registering and checking models in Codex'):
         s.register()
         install_picker(s)
     return 'Connection test passed.'
@@ -380,13 +380,18 @@ def main():
     p = argparse.ArgumentParser(prog='route-for-codex')
     p.add_argument('--home', help=argparse.SUPPRESS)
     p.add_argument('--relay-port', type=int, default=PORT, help=argparse.SUPPRESS)
-    actions = ('connect', 'test', 'select', 'replace', 'disconnect', 'reconnect', 'forget', 'status', 'setup', 'login', 'token', 'images-mcp', 'onboard', 'picker-token')
+    actions = ('connect', 'test', 'select', 'replace', 'disconnect', 'reconnect', 'forget', 'status', 'setup', 'login', 'token', 'images-mcp', 'onboard', 'picker-token', 'catalog-for-version')
     p.add_argument('action', choices=actions, nargs='?', default='setup')
+    p.add_argument('--client-version', help=argparse.SUPPRESS)
     args = p.parse_args()
     if args.home:
         os.environ['ROUTE_HOME'] = args.home
     try:
         s = Session()
+        if args.action == 'catalog-for-version':
+            from .picker import refresh_rows
+            print(json.dumps(refresh_rows(s, args.client_version)))
+            return
         if args.action == 'images-mcp':
             from .images import serve
             serve(s, args.relay_port)

@@ -17,3 +17,5 @@ Blocked by: combined-picker/03
 2026-11-23 · The Python package installs the route-for-codex entry point. Stock new chats selected either configured default without changing the three fixture rows. Guided activation, journal migration, and recovery of the combined provider remain open.
 
 2026-11-24 · The source installer stages the Go dispatcher. The macOS integration test upgrades a disposable legacy profile, preserves its native selection, reads the branded picker rows in stock Codex, switches accounts twice in one chat and verifies the resulting file. Normally launched Desktop and release qualification remain open.
+
+2026-11-24 · The CLI and bundled Desktop executable reported 0.171.0-alpha.13 while the live terminal service ran 0.172.0. Its picker listed ten ordinary rows before refresh and ten ordinary plus seven branded Route rows afterward. Setup checks the requesting clients and reloads the configured provider on a stale running service before reporting Ready.
