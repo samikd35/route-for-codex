@@ -14,7 +14,7 @@ import urllib.request
 from . import client_catalog
 from .models import branded_rows, codex_path, eligible
 from .relay import CADDY, combined_configuration, control
-from .settings import change, config, write
+from .settings import change, config, config_path, write
 
 PROVIDER = 'route-combined'
 NATIVE_URL = 'https://chatgpt.com/backend-api/codex'
@@ -28,6 +28,25 @@ def native_login():
     codex = codex_path()
     login = subprocess.run([codex, 'login', 'status'], capture_output=True, text=True)
     return login.returncode == 0 and 'chatgpt' in (login.stdout + login.stderr).lower()
+
+
+def native_auth_file(current):
+    if current.get('cli_auth_credentials_store', 'file') not in ('file', 'auto'):
+        return None
+    path = config_path().with_name('auth.json')
+    try:
+        if os.name != 'nt':
+            info = path.stat()
+            if info.st_uid != os.getuid() or info.st_mode & 0o077:
+                return None
+        auth = json.loads(path.read_text())
+    except (OSError, ValueError):
+        return None
+    tokens = auth.get('tokens') if isinstance(auth, dict) else None
+    if (isinstance(tokens, dict) and auth.get('auth_mode', 'chatgpt') == 'chatgpt'
+            and tokens.get('access_token') and tokens.get('account_id')):
+        return str(path.resolve())
+    return None
 
 
 def desktop_clients():
@@ -101,6 +120,10 @@ def install(session, port, helper):
         raise RuntimeError('An existing model_catalog_json setting controls the Codex picker')
     version = client_version()
     native = native_login()
+    auth_file = native_auth_file(current) if native else None
+    if auth_file and current.get('openai_base_url') not in (None, journal.get('openai_base_url', [None, None])[1]):
+        raise RuntimeError('An existing openai_base_url controls native Codex requests')
+    default_provider = 'openai' if auth_file else PROVIDER
     saved = json.loads((session.home / 'models.json').read_text())
     rows = compatible_rows(Path(codex_path()), saved) if 'accessible_ids' in saved else branded_rows(saved['models'])
     token = secrets.token_urlsafe()
@@ -109,30 +132,33 @@ def install(session, port, helper):
     legacy_token = session.credential.read_text()
     cfg = dict(Socket=str(sock), Lease=str(lease), GatewayToken=token, RouteKey=legacy_token,
                NativeURL=NATIVE_URL, RouteURL=f'http://127.0.0.1:{port}/v1',
-               Catalogs={version: rows})
+               NativeAuthFile=auth_file or '', Catalogs={version: rows})
     service = client_catalog.daemon_info()
     clients = installed_clients(version, service)
     cfg['CatalogCommand'] = [sys.executable, *helper[:-1], 'catalog-for-version']
     for _, binary, other in clients:
         if other not in cfg['Catalogs']:
             cfg['Catalogs'][other] = compatible_rows(binary, saved)
-    fingerprint = hashlib.sha256(json.dumps([cfg['Catalogs'], native, helper, cfg['CatalogCommand']],
+    fingerprint = hashlib.sha256(json.dumps([cfg['Catalogs'], native, auth_file, helper, cfg['CatalogCommand']],
                                             sort_keys=True).encode()).hexdigest()
     gateway_port = session.state.get('picker_port')
-    if (gateway_port and current.get('model_provider') == PROVIDER
+    if (gateway_port and current.get('model_provider') == default_provider
+            and PROVIDER in current.get('model_providers', {})
+            and (not auth_file or current.get('openai_base_url') == f'http://127.0.0.1:{gateway_port}/v1')
             and session.state.get('picker_fingerprint') == fingerprint and lease.is_file()):
         try:
             check_catalog(f'http://127.0.0.1:{gateway_port}/v1', version, lease.read_text(), rows)
         except (OSError, ValueError, RuntimeError):
             pass
         else:
-            client_catalog.verify(clients, cfg['Catalogs'], native, service)
+            client_catalog.verify(clients, cfg['Catalogs'], native, service, default_provider)
             return
     binary = CADDY.with_name('dispatcher.exe' if os.name == 'nt' else 'dispatcher')
     # A background process inheriting the project directory prevents its removal on Windows.
     child = subprocess.Popen([binary], cwd=binary.parent, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                              start_new_session=os.name != 'nt',
                              creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0)
+    published = False
     try:
         child.stdin.write(json.dumps(cfg).encode())
         child.stdin.close()
@@ -151,24 +177,31 @@ def install(session, port, helper):
         base = f'http://127.0.0.1:{gateway_port}/v1'
         server = combined_configuration(gateway_port, sock)['apps']['http']['servers']['combined']
         control(session.admin, '/config/apps/http/servers/combined', server)
+        published = True
         check_catalog(base, version, token, rows)
         write(lease, token)
         provider = dict(name='Route combined', wire_api='responses', base_url=base, model_catalog_url=base+'/models',
                         requires_openai_auth=native, supports_websockets=False, request_max_retries=0, stream_max_retries=0,
                         gateway_oauth=dict(delivery=dict(kind='header', name='X-Route-Token'),
                                            credential_export=dict(command=sys.executable, args=helper)))
-        settings = {'model_providers.' + PROVIDER: provider, 'model_provider': PROVIDER}
+        settings = {'model_providers.' + PROVIDER: provider, 'model_provider': default_provider}
+        if auth_file:
+            # Existing chats keep their provider ID, so extend the built-in
+            # provider's catalog and inference endpoint together.
+            settings['openai_base_url'] = base
         if not native:
             settings['model'] = 'route-' + session.state['model']
-        restore = ('model_catalog_json', 'model_reasoning_effort', 'model')
+        restore = ('model_catalog_json', 'model_reasoning_effort', 'model', 'openai_base_url')
         change(session.state, session.file, settings, restore_defaults=restore)
         session.state['picker_fingerprint'] = fingerprint
         session.state['picker_port'] = gateway_port
         session.state['default'] = False
         session.save()
+        client_catalog.verify(clients, cfg['Catalogs'], native, service, default_provider)
     except BaseException:
         child.terminate()
         child.wait()
+        if published:
+            session.stop()
         raise
     threading.Thread(target=child.wait, daemon=True).start()
-    client_catalog.verify(clients, cfg['Catalogs'], native, service)

@@ -55,9 +55,13 @@ def stage_caddy(work):
     (dest / binary).chmod(0o755)
 
 
+def gateway_sources():
+    return [*ROOT.glob('dispatcher/*.go'), *ROOT.glob('dispatcher/go.*')]
+
+
 def stage_gateway():
     source = hashlib.sha256()
-    for file in sorted([*ROOT.glob('dispatcher/*.go'), ROOT / 'dispatcher/go.mod']):
+    for file in sorted(gateway_sources()):
         source.update(file.name.encode() + b'\0' + file.read_bytes().replace(b'\r\n', b'\n'))
     if source.hexdigest() != 'e37c584b0dbf9690b684f0bbbba1a5553d7659b79a9ac430fbca019515339d51':
         with stage('Building the local gateway'):
@@ -119,7 +123,7 @@ def install(uv, only, verbose=False):
     bindir = data / 'bin'
     bindir.mkdir(mode=0o700, parents=True, exist_ok=True)
     fingerprint = hashlib.sha256()
-    for file in sorted([*ROOT.glob('route/*.py'), *ROOT.glob('dispatcher/*.go'), ROOT / 'dispatcher/go.mod', ROOT / 'tools/build_dispatcher.py', ROOT / 'tools/gateway.sha256', ROOT / 'pyproject.toml', Path(__file__)]):
+    for file in sorted([*ROOT.glob('route/*.py'), *gateway_sources(), ROOT / 'tools/build_dispatcher.py', ROOT / 'tools/gateway.sha256', ROOT / 'pyproject.toml', Path(__file__)]):
         fingerprint.update(file.read_bytes())
     version = data / 'versions' / fingerprint.hexdigest()[:16]
     tool = version / 'tools/route-for-codex'

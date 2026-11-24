@@ -22,21 +22,41 @@ type dispatcher struct {
 
 func (d *dispatcher) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	g := d.active.Load()
-	version := r.Header.Get("Version")
+	version := requestVersion(r)
 	catalog := r.Method == "GET" && r.URL.Path == "/v1/models"
-	if catalog {
-		version = r.URL.Query().Get("client_version")
-	}
-	version, _, _ = strings.Cut(version, "-")
 	if _, known := g.config.Catalogs[version]; !known && len(g.config.CatalogCommand) > 0 &&
 		(catalog || r.Method == "POST") && validVersion.MatchString(version) &&
-		equalToken(r.Header.Values("X-Route-Token"), g.config.GatewayToken) {
+		g.authorized(r) {
 		g = d.refresh(r.Context(), version)
 	}
 	g.ServeHTTP(w, r)
 }
 
 var validVersion = regexp.MustCompile(`^[0-9]{1,6}\.[0-9]{1,6}\.[0-9]{1,6}$`)
+
+func requestVersion(r *http.Request) string {
+	if r.Method == http.MethodGet && r.URL.Path == "/v1/models" {
+		version, _, _ := strings.Cut(r.URL.Query().Get("client_version"), "-")
+		return version
+	}
+	if value := r.Header.Get("Version"); value != "" {
+		version, _, _ := strings.Cut(value, "-")
+		return version
+	}
+
+	// Stock Codex custom providers omit Version on Responses requests. Codex
+	// includes its own version in the first product in User-Agent.
+	product, value, _ := strings.Cut(r.UserAgent(), "/")
+	if product == "" || (!strings.HasPrefix(strings.ToLower(product), "codex") && product != r.Header.Get("Originator")) {
+		return ""
+	}
+	value, _, _ = strings.Cut(value, " ")
+	version, _, _ := strings.Cut(value, "-")
+	if validVersion.MatchString(version) {
+		return version
+	}
+	return ""
+}
 
 // Discover metadata only from installed Codex programs. The helper receives a
 // version, never the API key, prompt, native credentials, or request headers.

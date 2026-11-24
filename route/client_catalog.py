@@ -45,7 +45,7 @@ async def read_stdio(binary):
         await process.wait()
 
 
-async def model_list(request, reload_provider=False):
+async def model_list(request, reload_provider=None):
     async def call(method, params, seq):
         reply = await request(dict(id=seq, method=method, params=params))
         if 'result' not in reply:
@@ -55,9 +55,9 @@ async def model_list(request, reload_provider=False):
                               'capabilities': {'experimentalApi': True}}, 1)
     if reload_provider:
         settings = await call('config/read', {}, 2)
-        if settings['config'].get('model_provider') != 'route-combined':
+        if settings['config'].get('model_provider', 'openai') != reload_provider:
             raise RuntimeError('Codex is using a different provider. Check your active profile.')
-        updated = await call('modelProvider/default/set', {'providerId': 'route-combined'}, 3)
+        updated = await call('modelProvider/default/set', {'providerId': reload_provider}, 3)
         if updated.get('status') != 'ok':
             raise RuntimeError('Codex could not reload the registered Route provider')
     rows = {}
@@ -71,7 +71,7 @@ async def model_list(request, reload_provider=False):
     raise RuntimeError('Codex model list exceeded its page limit')
 
 
-def read_service(path, reload_provider=False):
+def read_service(path, reload_provider=None):
     from websockets.sync.client import unix_connect
     with admin_socket(path) as sock, unix_connect(sock=sock, uri='ws://localhost/rpc',
                                                   open_timeout=8, close_timeout=2) as ws:
@@ -84,7 +84,7 @@ def read_service(path, reload_provider=False):
         return asyncio.run(model_list(request, reload_provider))
 
 
-def verify(clients, catalogs, native, service):
+def verify(clients, catalogs, native, service, provider):
     from websockets.exceptions import WebSocketException
 
     for label, binary, version in clients:
@@ -102,7 +102,7 @@ def verify(clients, catalogs, native, service):
             if label == 'Codex service':
                 visible = read_service(service['socketPath'])
                 if missing(visible):
-                    visible = read_service(service['socketPath'], reload_provider=True)
+                    visible = read_service(service['socketPath'], reload_provider=provider)
             else:
                 visible = asyncio.run(read_stdio(binary))
         except (OSError, WebSocketException, subprocess.SubprocessError) as exc:

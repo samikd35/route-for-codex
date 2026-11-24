@@ -12,7 +12,7 @@ Access to one eligible model is sufficient. If OpenAI rejects the selected model
 
 ## Combined picker under development
 
-The next release uses one combined provider for new chats. Selecting an ordinary row keeps native billing. A row such as **Route 6.2 Sol** selects the project key. Both groups stay in the picker when the default row changes. The gateway receives separate native and local credentials. A Go dispatcher behind Caddy chooses the destination on each request and translates Route aliases to upstream model IDs. Built-in image requests use the originating turn to select the same billing account. See the [stock-client proof](docs/combined-picker-proof.md) and [implementation tickets](.scratch/combined-picker/issues/).
+With a file-backed ChatGPT sign-in, setup keeps the built-in `openai` provider and points it at the loopback gateway. Reopen an existing native chat to load the combined picker without changing its provider or chat ID. Other profiles use the registered `route-combined` provider for new chats. The gateway accepts the current file-backed ChatGPT credential or the registered provider's local token. A Go dispatcher behind Caddy sends ordinary models to ChatGPT and translates aliases such as **Route 6.2 Sol** to their API model IDs for project-key inference. Built-in image requests use the originating turn to select the same billing account. See the [stock-client proof](docs/combined-picker-proof.md) and [implementation tickets](.scratch/combined-picker/issues/).
 
 ## Current single-provider setup
 

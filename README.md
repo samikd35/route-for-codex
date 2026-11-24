@@ -30,7 +30,7 @@ Invoke-RestMethod https://raw.githubusercontent.com/samikd35/route-for-codex/mai
 </details>
 
 1. Paste your OpenAI project API key at the private terminal prompt. Route checks model access and verifies the connection with two billable model requests.
-2. Wait for **Ready to use Route**. Setup checks the visible model list for the CLI, the active local Codex service, and detected Desktop binaries. Route builds a matching catalog when an updated client requests it. Your ChatGPT sign-in keeps its ordinary model selected. Choose **Route 6.2 Sol** or another **Route** row in a new chat to use your project key. In the terminal, enter `/model` and use the down arrow to reach the Route rows below the ordinary models. With only a project key, setup selects an eligible Route model.
+2. Wait for **Ready to use Route**. Setup checks the visible model list for the CLI, the active local Codex service, and detected Desktop binaries. Route builds a matching catalog when an updated client requests it. Choose **Route 6.2 Sol** or another **Route** row to use your project key. With Codex's file-backed ChatGPT sign-in, you can reopen a native chat and switch models in that same chat. In the terminal, enter `/model` to find Route below the ordinary models. With only a project key, setup selects an eligible Route model for new chats.
 3. In a project folder, press Enter to open Codex there. From your home folder, setup finishes with instructions to open a project. Later, open a fresh terminal in any project and run `codex`.
 
 The install runs under your user account. It leaves the system networking command `route` available. Route uses Keychain or Windows Credential Manager for the key and offers session-only use when secure storage is unavailable. Your OpenAI project pays for requests sent through Route.
@@ -68,7 +68,7 @@ For the setup window on macOS or Linux, run `.venv/bin/route-for-codex setup`. O
 
 The upstream key goes to the OS credential store, or remains in relay memory for a session-only connection. The credential helper reads only a local token from the private Route directory. Caddy consumes its configuration on stdin, disables config persistence and emits no request logs. Rotation reloads it via a private filesystem socket. `CODEX_HOME` selects the Codex profile; `ROUTE_HOME` selects private Route state (default `~/.route`). These overrides do **not** isolate the OS keychain: use a separate OS account for live qualification. Disconnect or Forget before removing an installed build.
 
-The [combined-picker proof](docs/combined-picker-proof.md) runs separately in a disposable profile. Setup retains the legacy provider for existing Route chats and registers the combined provider for new chats.
+The [combined-picker proof](docs/combined-picker-proof.md) runs separately in a disposable profile. Setup retains the legacy providers for existing Route chats. For a file-backed ChatGPT sign-in, the built-in provider uses Route's loopback gateway, which validates requests against the current local Codex sign-in. Other profiles use the registered combined provider for new chats.
 
 ## Generate an image using only your API key
 

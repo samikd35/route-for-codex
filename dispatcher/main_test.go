@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -8,10 +9,13 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/klauspost/compress/zstd"
 )
 
 func testRow(slug string) modelRow {
@@ -318,4 +322,121 @@ func TestRefreshForNewClientVersion(t *testing.T) {
 	if d.active.Load() != refreshed {
 		t.Fatal("unexpected duplicate refresh")
 	}
+
+	// A resumed chat can make a Responses request before fetching a fresh catalog.
+	d.active.Store(g)
+	r := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(`{"model":"route-gpt-6.2-astra"}`))
+	r.Header.Set("X-Route-Token", "Bearer token")
+	r.Header.Set("User-Agent", "codex_cli_rs/0.172.0 (Mac OS; arm64)")
+	w := httptest.NewRecorder()
+	d.ServeHTTP(w, r)
+	if w.Code != 400 || !strings.Contains(w.Body.String(), "Unknown or revoked Route model") || d.active.Load() == g {
+		t.Fatalf("response did not refresh the requesting client's catalog: %d %s", w.Code, w.Body)
+	}
+}
+
+func TestResponsesUsesClientUserAgentVersion(t *testing.T) {
+	native := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer native" {
+			t.Error("native backend did not receive its own credential")
+		}
+		if r.URL.Path == "/models" {
+			if r.URL.Query().Get("client_version") != "0.171.0" {
+				t.Errorf("native catalog used %s", r.URL.RawQuery)
+			}
+			io.WriteString(w, `{"models":[{"slug":"gpt-6.2-sol"}]}`)
+			return
+		}
+		io.WriteString(w, "native")
+	}))
+	defer native.Close()
+	project := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body modelRow
+		if r.Header.Get("Authorization") != "Bearer project" ||
+			json.NewDecoder(r.Body).Decode(&body) != nil || field(body, "model") != "gpt-6.2-sol" {
+			t.Error("project backend did not receive its credential and unaliased model")
+		}
+		io.WriteString(w, "project")
+	}))
+	defer project.Close()
+	g, err := newGateway(config{GatewayToken: "token", RouteKey: "project", NativeURL: native.URL,
+		RouteURL: project.URL, Catalogs: map[string][]modelRow{"0.171.0": {}, "0.172.0": {testRow("route-gpt-6.2-sol")}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct{ agent, model, want string }{
+		{"Codex Desktop/0.171.0-alpha.13 (Mac OS; arm64)", "gpt-6.2-sol", "native"},
+		{"codex_cli_rs/0.172.0 (Mac OS; arm64)", "route-gpt-6.2-sol", "project"},
+	} {
+		r := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(fmt.Sprintf(`{"model":%q}`, tc.model)))
+		r.Header.Set("X-Route-Token", "Bearer token")
+		r.Header.Set("Authorization", "Bearer native")
+		r.Header.Set("User-Agent", tc.agent)
+		w := httptest.NewRecorder()
+		g.ServeHTTP(w, r)
+		if w.Code != 200 || w.Body.String() != tc.want {
+			t.Errorf("%s: got %d %s, want 200 from %s", tc.model, w.Code, w.Body, tc.want)
+		}
+	}
+}
+
+func TestNativeProviderAuthenticationAndCompression(t *testing.T) {
+	authFile := filepath.Join(t.TempDir(), "auth.json")
+	writeAuth := func(token string) {
+		t.Helper()
+		if err := os.WriteFile(authFile, fmt.Appendf(nil, `{"tokens":{"access_token":%q,"account_id":"account"}}`, token), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	writeAuth("chatgpt")
+	project := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer project" || r.Header.Get("ChatGPT-Account-ID") != "" || r.Header.Get("Content-Encoding") != "" {
+			t.Error("native credential or encoding leaked to the project request")
+		}
+		var body modelRow
+		if json.NewDecoder(r.Body).Decode(&body) != nil || field(body, "model") != "gpt-6.2-sol" || field(body, "input") != "context from native chat" {
+			t.Error("project request lost the model or conversation input")
+		}
+		io.WriteString(w, "project")
+	}))
+	defer project.Close()
+	g, err := newGateway(config{GatewayToken: "local", RouteKey: "project", NativeAuthFile: authFile,
+		NativeURL: "https://chatgpt.com/backend-api/codex", RouteURL: project.URL,
+		Catalogs: map[string][]modelRow{"0.171.0": {testRow("route-gpt-6.2-sol")}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	send := func(r *http.Request, token, account string) *httptest.ResponseRecorder {
+		r.Header.Set("Authorization", "Bearer "+token)
+		r.Header.Set("ChatGPT-Account-ID", account)
+		w := httptest.NewRecorder()
+		g.ServeHTTP(w, r)
+		return w
+	}
+	ws := httptest.NewRequest(http.MethodGet, "/v1/responses", nil)
+	ws.Header.Set("Upgrade", "websocket")
+	if got := send(ws, "chatgpt", "account").Code; got != http.StatusUpgradeRequired {
+		t.Fatalf("WebSocket should negotiate HTTP fallback, got %d", got)
+	}
+	encoder, err := zstd.NewWriter(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer encoder.Close()
+	data := encoder.EncodeAll([]byte(`{"model":"route-gpt-6.2-sol","input":"context from native chat"}`), nil)
+	post := func(token, account string, want int) {
+		t.Helper()
+		r := httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(data))
+		r.Header.Set("Content-Encoding", "zstd")
+		r.Header.Set("Version", "0.171.0-alpha.13")
+		w := send(r, token, account)
+		if w.Code != want || (want == 200 && w.Body.String() != "project") {
+			t.Fatalf("wanted %d, got %d %s", want, w.Code, w.Body)
+		}
+	}
+	post("chatgpt", "other-account", 401)
+	post("chatgpt", "account", 200)
+	writeAuth("new-chatgpt")
+	post("chatgpt", "account", 401)
+	post("new-chatgpt", "account", 200)
 }

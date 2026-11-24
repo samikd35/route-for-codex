@@ -13,19 +13,19 @@ class ClientCatalogTest(unittest.TestCase):
 
     def test_stale_service_is_reloaded_and_checked_again(self):
         with patch('route.client_catalog.read_service', side_effect=[self.native, self.native | self.route]) as read:
-            verify(self.clients, self.catalogs, True, {'socketPath': 'socket'})
-            read.assert_called_with('socket', reload_provider=True)
+            verify(self.clients, self.catalogs, True, {'socketPath': 'socket'}, 'openai')
+            read.assert_called_with('socket', reload_provider='openai')
 
     def test_partial_or_unbranded_picker_cannot_pass(self):
         for visible in (self.route, self.native, self.native | {'route-gpt-6.2-sol': 'Sol'}):
             with self.subTest(visible=visible), patch('route.client_catalog.read_service', return_value=visible):
                 with self.assertRaisesRegex(RuntimeError, 'has not loaded'):
-                    verify(self.clients, self.catalogs, True, {'socketPath': 'socket'})
+                    verify(self.clients, self.catalogs, True, {'socketPath': 'socket'}, 'route-combined')
 
     def test_respects_a_different_configured_provider(self):
         request = AsyncMock(side_effect=[{'result': {}}, {'result': {'config': {'model_provider': 'other'}}}])
         with self.assertRaisesRegex(RuntimeError, 'different provider'):
-            asyncio.run(model_list(request, reload_provider=True))
+            asyncio.run(model_list(request, reload_provider='route-combined'))
         self.assertEqual(request.await_count, 2)
 
     def test_key_only_and_paginated_model_list(self):
@@ -34,5 +34,5 @@ class ClientCatalogTest(unittest.TestCase):
         rows = asyncio.run(model_list(request))
         self.assertEqual(request.await_args.args[0]['params']['cursor'], 'second')
         with patch('route.client_catalog.read_service', return_value=rows) as read:
-            verify(self.clients, self.catalogs, False, {'socketPath': 'socket'})
+            verify(self.clients, self.catalogs, False, {'socketPath': 'socket'}, 'route-combined')
             read.assert_called_once()

@@ -57,8 +57,8 @@ class SetupTest(unittest.TestCase):
         self.assertEqual(len(calls[1]['input'][-1]['output']), 48)
 
     def test_first_run_key_and_default_selection(self):
-        for native in (False, True):
-            with self.subTest(native=native), tempfile.TemporaryDirectory() as d, \
+        for native, file_auth in ((False, False), (True, False), (True, True)):
+            with self.subTest(native=native, file_auth=file_auth), tempfile.TemporaryDirectory() as d, \
                     patch.dict(os.environ, ROUTE_HOME=d, CODEX_HOME=d), patch('route.cli.PORT', free_port()), \
                     patch('route.cli.discover') as discover, patch('route.cli.vault') as store, patch('route.cli.check') as probe:
                 discover.return_value = {'models': [{'slug': 'gpt-6.2-sol',
@@ -68,9 +68,18 @@ class SetupTest(unittest.TestCase):
                 prompt = Mock()
                 try:
                     (Path(d) / 'config.toml').write_text('model = "gpt-6.2-astra"\n')
+                    if file_auth:
+                        auth_file = Path(d) / 'auth.json'
+                        auth_file.write_text(json.dumps({'tokens': {
+                            'access_token': 'fixture-native', 'account_id': 'fixture-workspace'}}))
+                        auth_file.chmod(0o600)
                     with patch('route.picker.native_login', return_value=native):
                         execute(session, 'connect', prompt, initial_key='fixture-key')
-                    self.assertEqual(config()['model_provider'], 'route-combined')
+                    settings = config()
+                    self.assertEqual(settings['model_provider'], 'openai' if file_auth else 'route-combined')
+                    self.assertEqual('openai_base_url' in settings, file_auth)
+                    if file_auth:
+                        self.assertEqual(settings['openai_base_url'], settings['model_providers']['route-combined']['base_url'])
                     self.assertEqual(config()['model'], 'gpt-6.2-astra' if native else 'route-gpt-6.2-sol')
                     self.assertIn('route_images', config()['mcp_servers'])
                     self.assertEqual(store.return_value.set_password.call_args.args[-1], 'fixture-key')
@@ -79,6 +88,7 @@ class SetupTest(unittest.TestCase):
                     prompt.yes.assert_not_called()
                 finally:
                     session.stop()
+                self.assertNotIn('openai_base_url', config())
 
     def test_lifecycle(self):
         with tempfile.TemporaryDirectory(dir='/tmp') as d, patch.dict(os.environ, ROUTE_HOME=d, CODEX_HOME=d), \

@@ -261,9 +261,13 @@ def execute(s, action, prompt, *, initial_key=None, progress=lambda label: nullc
         if not key:
             raise RuntimeError('The saved API key was not found. Connect with a key.')
         s.start(key)
-        s.register()
-        if state.get('model'):
-            install_picker(s)
+        try:
+            s.register()
+            if state.get('model'):
+                install_picker(s)
+        except Exception:
+            s.stop()
+            raise
         state.update(intended=True, waiting=False)
         s.save()
         return 'Reconnected.'
@@ -278,7 +282,8 @@ def execute(s, action, prompt, *, initial_key=None, progress=lambda label: nullc
             raise RuntimeError('Relay stopped. Use connect.')
         key = initial_key if initial_key is not None else prompt.text('OpenAI API key', secret=True)
         if active:
-            control(s.admin, '/load', configuration(PORT, s.credential.read_text(), key, admin=s.admin))
+            relay_config = configuration(PORT, s.credential.read_text(), key, admin=s.admin)
+            control(s.admin, '/config/apps/http/servers/route', relay_config['apps']['http']['servers']['route'])
         else:
             s.start(key)
             state['default'] = False
@@ -370,8 +375,12 @@ def onboard(session, prompt):
     rows = json.loads((session.home / 'models.json').read_text())['models']
     from .models import branded_rows
     selected = next(row for row in branded_rows(rows) if row['slug'] == 'route-' + session.state['model'])
-    print('In a new Codex chat, open the model picker.')
-    if config()['model_providers']['route-combined']['requires_openai_auth']:
+    settings = config()
+    if settings.get('model_provider') == 'openai':
+        print('Open the model picker. Reopen an existing native chat to load Route.')
+    else:
+        print('In a new Codex chat, open the model picker.')
+    if settings['model_providers']['route-combined']['requires_openai_auth']:
         print('  Ordinary models    Use your existing Codex connection')
     print(f'  {selected["display_name"]:<18} Uses your OpenAI project key')
 

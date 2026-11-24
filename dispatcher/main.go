@@ -21,6 +21,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/klauspost/compress/zstd"
 )
 
 const catalogLimit = 16 << 20
@@ -37,6 +39,7 @@ func field(row modelRow, name string) string {
 type config struct {
 	Socket, Lease, GatewayToken, RouteKey string
 	NativeURL, RouteURL                   string
+	NativeAuthFile                        string
 	// The proof stages one catalog per installed client version.
 	CatalogCommand []string
 	Catalogs       map[string][]modelRow
@@ -106,6 +109,37 @@ func nativeHeaders(in, out http.Header) {
 	}
 }
 
+func (g *gateway) authorized(r *http.Request) bool {
+	if equalToken(r.Header.Values("X-Route-Token"), g.config.GatewayToken) {
+		return true
+	}
+	if g.config.NativeAuthFile == "" || r.Header.Get("ChatGPT-Account-ID") == "" {
+		return false
+	}
+	// The built-in provider sends the user's ChatGPT credential. Compare it
+	// against the current private Codex auth file so a refresh needs no restart.
+	file, err := os.Open(g.config.NativeAuthFile)
+	if err != nil {
+		return false
+	}
+	defer file.Close()
+	info, err := file.Stat()
+	if err != nil || !info.Mode().IsRegular() || (runtime.GOOS != "windows" && info.Mode().Perm()&0077 != 0) {
+		return false
+	}
+	var auth struct {
+		Mode   string `json:"auth_mode"`
+		Tokens struct {
+			AccessToken string `json:"access_token"`
+			AccountID   string `json:"account_id"`
+		}
+	}
+	return json.NewDecoder(io.LimitReader(file, 1<<20)).Decode(&auth) == nil &&
+		(auth.Mode == "" || auth.Mode == "chatgpt") &&
+		auth.Tokens.AccessToken != "" && auth.Tokens.AccountID == r.Header.Get("ChatGPT-Account-ID") &&
+		equalToken(r.Header.Values("Authorization"), auth.Tokens.AccessToken)
+}
+
 func identity(r *http.Request, version string) [32]byte {
 	return sha256.Sum256([]byte(r.Header.Get("Authorization") + "\x00" + r.Header.Get("ChatGPT-Account-ID") + "\x00" + version))
 }
@@ -173,7 +207,7 @@ func (g *gateway) nativeCatalog(r *http.Request, version string) ([]modelRow, er
 }
 
 func (g *gateway) catalog(w http.ResponseWriter, r *http.Request) {
-	version, _, _ := strings.Cut(r.URL.Query().Get("client_version"), "-")
+	version := requestVersion(r)
 	rows, ok := g.config.Catalogs[version]
 	if !ok {
 		reject(w, 409, "No Route catalog for this Codex version")
@@ -234,12 +268,18 @@ func (g *gateway) eligibleAlias(version, model string) bool {
 }
 
 func (g *gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	if !equalToken(r.Header.Values("X-Route-Token"), g.config.GatewayToken) {
+	if !g.authorized(r) {
 		reject(w, 401, "Local gateway credential rejected")
 		return
 	}
 	if r.Method == "GET" && r.URL.Path == "/v1/models" {
 		g.catalog(w, r)
+		return
+	}
+	if r.Method == http.MethodGet && r.URL.Path == "/v1/responses" && strings.EqualFold(r.Header.Get("Upgrade"), "websocket") {
+		// Ask stock Codex to send the full turn over HTTP. An incremental
+		// WebSocket request can refer to a different billing account's response.
+		reject(w, http.StatusUpgradeRequired, "Route uses HTTP streaming")
 		return
 	}
 	if r.Method == "POST" && (r.URL.Path == "/v1/images/generations" || r.URL.Path == "/v1/images/edits") {
@@ -250,12 +290,23 @@ func (g *gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		reject(w, 404, "Unsupported gateway endpoint")
 		return
 	}
-	if enc := r.Header.Get("Content-Encoding"); enc != "" && enc != "identity" {
+	var body io.Reader = http.MaxBytesReader(w, r.Body, inputLimit)
+	switch r.Header.Get("Content-Encoding") {
+	case "", "identity":
+	case "zstd":
+		decoder, err := zstd.NewReader(body, zstd.WithDecoderConcurrency(1), zstd.WithDecoderMaxMemory(inputLimit))
+		if err != nil {
+			reject(w, 400, "Invalid compressed Responses request")
+			return
+		}
+		defer decoder.Close()
+		body = io.LimitReader(decoder, inputLimit+1)
+	default:
 		reject(w, 415, "Unsupported request encoding")
 		return
 	}
-	raw, err := io.ReadAll(http.MaxBytesReader(w, r.Body, inputLimit))
-	if err != nil {
+	raw, err := io.ReadAll(body)
+	if err != nil || len(raw) > inputLimit {
 		reject(w, 413, "Request body exceeds limit or could not be read")
 		return
 	}
@@ -268,7 +319,7 @@ func (g *gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		reject(w, 400, "Stateless HTTP requires replayed conversation input")
 		return
 	}
-	version, _, _ := strings.Cut(r.Header.Get("Version"), "-")
+	version := requestVersion(r)
 	if _, ok := g.config.Catalogs[version]; !ok {
 		// A fixture or client without a Version header can use a single staged version.
 		if version != "" || len(g.config.Catalogs) != 1 {
