@@ -29,6 +29,8 @@ jobs:
       - name: Install Route and Codex from the public macOS command
         if: runner.os == 'macOS'
         shell: bash
+        env:
+          SHELL: /bin/zsh
         run: |
           bash -c "$(curl -fsSL "https://raw.githubusercontent.com/$GITHUB_REPOSITORY/$GITHUB_SHA/install.sh")" -- --install-only
           /bin/zsh -lic 'command -v route-for-codex && route-for-codex status && codex --version'

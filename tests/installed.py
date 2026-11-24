@@ -41,6 +41,9 @@ def run(args, env, cwd, *, answers=None, expected=0, timeout=150):
                      'Route requires a private Windows directory', 'Invalid credential format',
                      'Could not locate the installed Codex CLI', 'Unlock the OS credential store')
                      if msg in result.stderr), '')
+        if args[1] == 'status' and not known:
+            # Status has no key, prompt or upstream response in its output.
+            known = result.stderr.strip()[-1200:]
         raise RuntimeError(f'{Path(args[0]).name} {args[1]} exited {result.returncode}. {known}')
     return result.stdout.strip()
 

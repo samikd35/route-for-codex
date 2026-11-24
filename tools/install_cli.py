@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 import platform
 import shutil
+import shlex
 import subprocess
 import sys
 import tarfile
@@ -80,6 +81,8 @@ def install(uv, only):
     for file in sorted([*ROOT.glob('route/*.py'), ROOT / 'pyproject.toml', Path(__file__)]):
         fingerprint.update(file.read_bytes())
     version = data / 'versions' / fingerprint.hexdigest()[:16]
+    tool = version / 'tools/route-for-codex'
+    python = tool / ('Scripts/python.exe' if WINDOWS else 'bin/python')
     command = version / 'commands' / ('route-for-codex.exe' if WINDOWS else 'route-for-codex')
     # update-shell must see the user's original PATH when persisting the new directory.
     shell_env = dict(os.environ, UV_TOOL_BIN_DIR=str(bindir))
@@ -88,7 +91,7 @@ def install(uv, only):
         if not command.is_file():
             print('Installing Route and its local relay…', flush=True)
             stage_caddy(work)
-            subprocess.run([uv, 'tool', 'install', '--python', sys.executable, ROOT], check=True,
+            subprocess.run([uv, 'tool', 'install', '--quiet', '--python', sys.executable, ROOT], check=True,
                            env=dict(os.environ, UV_TOOL_DIR=str(version / 'tools'),
                                     UV_TOOL_BIN_DIR=str(command.parent)))
         subprocess.run([uv, 'tool', 'update-shell'], env=shell_env, check=True)
@@ -99,10 +102,11 @@ def install(uv, only):
         with tempfile.TemporaryDirectory(dir=bindir) as staging:
             new = Path(staging) / launcher.name
             if WINDOWS:
-                relative = os.path.relpath(command, bindir)
-                new.write_bytes(f'@echo off\r\n"%~dp0{relative}" %*\r\n'.encode('ascii'))
+                relative = os.path.relpath(python, bindir)
+                new.write_bytes(f'@echo off\r\n"%~dp0{relative}" -I -m route.cli %*\r\n'.encode('ascii'))
             else:
-                new.symlink_to(command)
+                new.write_text(f'#!/bin/sh\nexec {shlex.quote(str(python))} -I -m route.cli "$@"\n')
+                new.chmod(0o755)
             os.replace(new, launcher)
         # A compatible Codex outside PATH may have been discovered at the standard location.
         if not shutil.which('codex'):
@@ -112,7 +116,7 @@ def install(uv, only):
         print(f'Installed {launcher}. In a new terminal, run route-for-codex onboard to connect.', flush=True)
         if only:
             return
-        subprocess.run([command, 'onboard'], check=True)
+        subprocess.run([python, '-I', '-m', 'route.cli', 'onboard'], check=True)
     if sys.stdin.isatty() and input('Open Codex in this folder now? [y/N] ').strip().lower() in ('y', 'yes'):
         subprocess.run([codex], check=True)
 
