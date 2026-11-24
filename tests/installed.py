@@ -1,5 +1,6 @@
 """Exercise a native installation with stock Codex on a disposable test account."""
 import argparse
+import errno
 from contextlib import contextmanager, nullcontext
 from http.server import BaseHTTPRequestHandler, HTTPServer
 import json
@@ -13,6 +14,7 @@ import subprocess
 import sys
 import tempfile
 import threading
+import time
 import tomllib
 from unittest.mock import patch
 
@@ -204,8 +206,20 @@ def main():
     codex = shutil.which('codex')
     require(codex, 'Install Codex CLI first')
     # Darwin limits the length of a Unix socket path.
-    with tempfile.TemporaryDirectory(prefix='ri-', dir='/tmp' if sys.platform == 'darwin' else None) as temp:
-        exercise(exe, codex, Path(temp), args.live, args.source_python)
+    temp = tempfile.TemporaryDirectory(prefix='ri-', dir='/tmp' if sys.platform == 'darwin' else None)
+    try:
+        exercise(exe, codex, Path(temp.name), args.live, args.source_python)
+    finally:
+        # Stock Codex may still be finishing a plugin clone in its disposable profile.
+        deadline = time.monotonic() + 30
+        while True:
+            try:
+                temp.cleanup()
+                break
+            except OSError as exc:
+                if exc.errno != errno.ENOTEMPTY or time.monotonic() >= deadline:
+                    raise
+                time.sleep(0.5)
 
 
 if __name__ == '__main__':
