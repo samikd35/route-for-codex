@@ -173,7 +173,11 @@ def exercise(exe, codex, root, live, source_python=None):
             if live:
                 result = run([exe, action], env, project, answers=key + '\n', timeout=240)
             else:
-                result = run([exe, 'test'], env, project, answers='y\n')
+                result = run([exe, 'onboard'], env, project)
+                require('Ready to use Route' in result and 'Uses your OpenAI project key' in result,
+                        'Wizard did not explain the registered model')
+                repeated = run([exe, 'onboard'], env, project)
+                require('already verified' in repeated, 'Repeat setup repeated the connection challenge')
             require('Connection test passed.' in result, 'Two-request setup challenge failed')
             doc = tomllib.loads(config.read_text())
             require(doc.get('model_provider') == 'route-combined' and doc['model'] == 'route-' + MODEL,

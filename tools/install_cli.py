@@ -17,7 +17,7 @@ import zipfile
 ROOT = Path(__file__).resolve().parents[1]
 # Isolated bootstrap Python has no installed Route package yet.
 sys.path.insert(0, str(ROOT))
-from route.progress import stage
+from route.progress import accent, stage
 
 
 WINDOWS = os.name == 'nt'
@@ -108,7 +108,7 @@ def install_codex(bindir, work):
 
 def install(uv, only, verbose=False):
     version_label = tomllib.loads((ROOT / 'pyproject.toml').read_text())['project']['version']
-    print(f'Route for Codex  {version_label}', flush=True)
+    print(accent('Route for Codex', sys.stdout) + f'  {version_label}', flush=True)
     if verbose:
         os.environ['ROUTE_VERBOSE'] = '1'
     detail = '--verbose' if verbose else '--quiet'

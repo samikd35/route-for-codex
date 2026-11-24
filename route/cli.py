@@ -9,7 +9,7 @@ import sys
 import time
 from urllib.error import HTTPError
 
-from .progress import stage
+from .progress import accent, stage
 from .check import CredentialRejected, check, http_error
 from .models import discover, selection
 from .images import TOOL_SECONDS
@@ -366,7 +366,7 @@ def onboard(session, prompt):
                 raise RuntimeError('Setup paused. Run route-for-codex onboard to continue.') from None
             action = 'replace' if session.active() else 'connect'
     print(result)
-    print('\nReady to use Route\n')
+    print('\n' + accent('Ready to use Route', sys.stdout) + '\n')
     rows = json.loads((session.home / 'models.json').read_text())['models']
     from .models import branded_rows
     selected = next(row for row in branded_rows(rows) if row['slug'] == 'route-' + session.state['model'])
