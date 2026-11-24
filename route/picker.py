@@ -91,7 +91,8 @@ def install(session, port, helper):
         else:
             return
     binary = CADDY.with_name('dispatcher.exe' if os.name == 'nt' else 'dispatcher')
-    child = subprocess.Popen([binary], stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+    # A background process inheriting the project directory prevents its removal on Windows.
+    child = subprocess.Popen([binary], cwd=binary.parent, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                              start_new_session=os.name != 'nt',
                              creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0)
     try:
