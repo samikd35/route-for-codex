@@ -35,12 +35,18 @@ jobs:
         if: matrix.launcher == 'npx'
         with:
           node-version: 'lts/*'
-      - name: Install using the public npx command from outside the checkout
-        if: matrix.launcher == 'npx'
+      - name: Install from a macOS terminal using the public npx command
+        if: runner.os == 'macOS' && matrix.launcher == 'npx'
+        shell: /bin/zsh -e {0}
+        env:
+          SHELL: /bin/zsh
+        working-directory: ${{ runner.temp }}
+        run: npx --yes "$NPX_ROUTE_SPEC" --install-only
+      - name: Install from Windows PowerShell using the public npx command
+        if: runner.os == 'Windows' && matrix.launcher == 'npx'
         shell: pwsh
+        working-directory: ${{ runner.temp }}
         run: |
-          if ($IsMacOS) { $env:SHELL = '/bin/zsh' }
-          Set-Location $env:RUNNER_TEMP
           npx --yes $env:NPX_ROUTE_SPEC --install-only
           exit $LASTEXITCODE
       - name: Install Route and Codex from the public macOS command
