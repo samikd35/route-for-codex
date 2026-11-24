@@ -102,10 +102,12 @@ def install(uv, only):
         with tempfile.TemporaryDirectory(dir=bindir) as staging:
             new = Path(staging) / launcher.name
             if WINDOWS:
-                relative = os.path.relpath(python, bindir)
-                new.write_bytes(f'@echo off\r\n"%~dp0{relative}" -I -m route.cli %*\r\n'.encode('ascii'))
+                relative = python.relative_to(data.parent)
+                prefix = f'"%LOCALAPPDATA%\\{relative}" -I -m route.cli'
+                new.write_bytes(('@echo off\r\nif "%~1"=="" (\r\n  ' + prefix +
+                                 ' --help\r\n) else (\r\n  ' + prefix + ' %*\r\n)\r\n').encode('ascii'))
             else:
-                new.write_text(f'#!/bin/sh\nexec {shlex.quote(str(python))} -I -m route.cli "$@"\n')
+                new.write_text(f'#!/bin/sh\nif [ "$#" -eq 0 ]; then set -- --help; fi\nexec {shlex.quote(str(python))} -I -m route.cli "$@"\n')
                 new.chmod(0o755)
             os.replace(new, launcher)
         # A compatible Codex outside PATH may have been discovered at the standard location.

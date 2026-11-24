@@ -61,3 +61,5 @@ jobs:
             $cli = "$data/bin/route-for-codex.cmd"
           }
           python -m tests.installed $cli --source-python $python
+      - name: Re-run the public default command and cancel at the private prompt
+        run: python -m tests.cli_prompt
