@@ -10,7 +10,7 @@ In your project folder, run the same command in macOS Terminal or Windows PowerS
 npx samikd35/route-for-codex
 ```
 
-If npm asks to install the package, answer **y**. Route installs its runtime and adds the official Codex CLI if it is missing. To install now and connect later, use `npx samikd35/route-for-codex --install-only`.
+If npm asks to install the package, answer **y**. The wizard downloads a checksum-verified gateway and shows progress while installing. Add `--verbose` for dependency output and installation paths. Route installs its runtime and adds the official Codex CLI if it is missing. To install now and connect later, use `npx samikd35/route-for-codex --install-only`.
 
 <details>
 <summary>Install on a computer without Node.js or Git</summary>
@@ -31,7 +31,7 @@ Invoke-RestMethod https://raw.githubusercontent.com/samikd35/route-for-codex/mai
 
 1. Paste your OpenAI project API key at the private terminal prompt. Route checks model access and verifies the connection with two billable model requests.
 2. Wait for **Connection test passed.** In the combined-picker build, a ChatGPT sign-in keeps its ordinary model selected. Choose **Route 6.2 Sol** or another **Route** row in a new chat to use your project key. With only a project key, setup selects an eligible Route model.
-3. Answer **y** to open Codex in the current folder. Later, open a fresh terminal in any project and run `codex`.
+3. In a project folder, press Enter to open Codex there. From your home folder, setup finishes with instructions to open a project. Later, open a fresh terminal in any project and run `codex`.
 
 The install runs under your user account. It leaves the system networking command `route` available. Route uses Keychain or Windows Credential Manager for the key and offers session-only use when secure storage is unavailable. Your OpenAI project pays for requests sent through Route.
 

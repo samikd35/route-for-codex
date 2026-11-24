@@ -10,10 +10,16 @@ import subprocess
 import sys
 import tarfile
 import tempfile
+import tomllib
 import zipfile
 
 
 ROOT = Path(__file__).resolve().parents[1]
+# Isolated bootstrap Python has no installed Route package yet.
+sys.path.insert(0, str(ROOT))
+from route.progress import stage
+
+
 WINDOWS = os.name == 'nt'
 CADDY_VERSION = '2.11.9'
 CADDY_ASSETS = {
@@ -26,7 +32,8 @@ CODEX_VERSION = '0.171.0-alpha.13'
 
 
 def download(url, target, expected):
-    subprocess.run(['curl.exe' if WINDOWS else 'curl', '--proto', '=https', '--fail', '--silent',
+    meter = '--progress-meter' if sys.stderr.isatty() else '--silent'
+    subprocess.run(['curl.exe' if WINDOWS else 'curl', '--proto', '=https', '--fail', meter,
                     '--show-error', '--location', '--retry', '2', '-o', target, url], check=True)
     with target.open('rb') as f:
         if hashlib.file_digest(f, 'sha256').hexdigest() != expected:
@@ -46,6 +53,26 @@ def stage_caddy(work):
             with member, (dest / name).open('wb') as out:
                 shutil.copyfileobj(member, out)
     (dest / binary).chmod(0o755)
+
+
+def stage_gateway():
+    source = hashlib.sha256()
+    for file in sorted([*ROOT.glob('dispatcher/*.go'), ROOT / 'dispatcher/go.mod']):
+        source.update(file.name.encode() + b'\0' + file.read_bytes().replace(b'\r\n', b'\n'))
+    if source.hexdigest() != '9c829f683021e6e89790f42efc100c67fd47c62989ca33724a955120d372e26d':
+        with stage('Building the local gateway'):
+            subprocess.run([sys.executable, ROOT / 'tools/build_dispatcher.py'], check=True)
+        return
+    arch = platform.machine().lower()
+    arch = {'x86_64': 'amd64', 'aarch64': 'arm64'}.get(arch, arch)
+    asset = f'dispatcher-{platform.system().lower()}-{arch}'
+    sums = {name: digest for digest, name in (line.split() for line in
+            (ROOT / 'tools/gateway.sha256').read_text().splitlines())}
+    target = ROOT / 'route/bin' / ('dispatcher.exe' if WINDOWS else 'dispatcher')
+    print('Downloading the verified gateway…', flush=True)
+    download('https://github.com/samikd35/route-for-codex/releases/download/'
+             'gateway-eecb429108a2efd58646d546241cfc4a5b6d7287/' + asset, target, sums[asset])
+    target.chmod(0o755)
 
 
 def install_codex(bindir, work):
@@ -75,16 +102,24 @@ def install_codex(bindir, work):
     if subprocess.run([found, 'debug', 'models', '--bundled'], stdout=subprocess.DEVNULL).returncode:
         raise RuntimeError(f'Codex at {found} could not read its bundled model catalog. '
                            'Run codex debug models --bundled for details, fix or update Codex, then rerun this installer.')
+    print('Codex CLI is ready.', flush=True)
     return found
 
 
-def install(uv, only):
+def install(uv, only, verbose=False):
+    version_label = tomllib.loads((ROOT / 'pyproject.toml').read_text())['project']['version']
+    print(f'Route for Codex  {version_label}', flush=True)
+    if verbose:
+        os.environ['ROUTE_VERBOSE'] = '1'
+    detail = '--verbose' if verbose else '--quiet'
+    if shutil.which('codex'):
+        print('Found Codex CLI.', flush=True)
     data = (Path(os.environ['LOCALAPPDATA']) / 'RouteForCodexCLI' if WINDOWS
             else Path.home() / '.local/share/route-for-codex')
     bindir = data / 'bin'
     bindir.mkdir(mode=0o700, parents=True, exist_ok=True)
     fingerprint = hashlib.sha256()
-    for file in sorted([*ROOT.glob('route/*.py'), *ROOT.glob('dispatcher/*.go'), ROOT / 'dispatcher/go.mod', ROOT / 'tools/build_dispatcher.py', ROOT / 'pyproject.toml', Path(__file__)]):
+    for file in sorted([*ROOT.glob('route/*.py'), *ROOT.glob('dispatcher/*.go'), ROOT / 'dispatcher/go.mod', ROOT / 'tools/build_dispatcher.py', ROOT / 'tools/gateway.sha256', ROOT / 'pyproject.toml', Path(__file__)]):
         fingerprint.update(file.read_bytes())
     version = data / 'versions' / fingerprint.hexdigest()[:16]
     tool = version / 'tools/route-for-codex'
@@ -95,13 +130,16 @@ def install(uv, only):
     with tempfile.TemporaryDirectory() as temp:
         work = Path(temp)
         if not command.is_file():
-            print('Installing Route and its local relay…', flush=True)
+            print('Downloading the local relay…', flush=True)
             stage_caddy(work)
-            subprocess.run([sys.executable, ROOT / 'tools/build_dispatcher.py'], check=True)
-            subprocess.run([uv, 'tool', 'install', '--quiet', '--python', sys.executable, ROOT], check=True,
-                           env=dict(os.environ, UV_TOOL_DIR=str(version / 'tools'),
-                                    UV_TOOL_BIN_DIR=str(command.parent)))
-        subprocess.run([uv, 'tool', 'update-shell'], env=shell_env, check=True)
+            stage_gateway()
+            with stage('Installing Route and its dependencies'):
+                subprocess.run([uv, 'tool', 'install', detail, '--python', sys.executable, ROOT], check=True,
+                               env=dict(os.environ, UV_TOOL_DIR=str(version / 'tools'),
+                                        UV_TOOL_BIN_DIR=str(command.parent)))
+        else:
+            print('Route is already installed.', flush=True)
+        subprocess.run([uv, detail, 'tool', 'update-shell'], env=shell_env, check=True)
         os.environ['PATH'] = str(bindir) + os.pathsep + os.environ.get('PATH', '')
         codex = install_codex(bindir, work)
         # Publish the launcher only after Route and the selected Codex both work.
@@ -119,14 +157,22 @@ def install(uv, only):
             os.replace(new, launcher)
         # A compatible Codex outside PATH may have been discovered at the standard location.
         if not shutil.which('codex'):
-            subprocess.run([uv, 'tool', 'update-shell'], check=True,
+            subprocess.run([uv, detail, 'tool', 'update-shell'], check=True,
                            env=dict(shell_env, UV_TOOL_BIN_DIR=str(Path(codex).parent)))
             os.environ['PATH'] += os.pathsep + str(Path(codex).parent)
-        print(f'Installed {launcher}. In a new terminal, run route-for-codex onboard to connect.', flush=True)
+        if verbose:
+            print(f'Installed command: {launcher}', flush=True)
         if only:
+            print('Ready to connect. In a new terminal, run route-for-codex onboard.', flush=True)
             return
         subprocess.run([python, '-I', '-m', 'route.cli', 'onboard'], check=True)
-    if sys.stdin.isatty() and input('Open Codex in this folder now? [y/N] ').strip().lower() in ('y', 'yes'):
+    folder = Path.cwd()
+    if folder == Path.home() or not sys.stdin.isatty():
+        print('Open a terminal in your project folder and run codex.')
+        return
+    display = str(Path('~') / folder.relative_to(Path.home())) if folder.is_relative_to(Path.home()) else str(folder)
+    if input(f'Open Codex in {display}? [Y/n] ').strip().lower() in ('', 'y', 'yes'):
+        print(f'Starting Codex in {display}…', flush=True)
         subprocess.run([codex], check=True)
 
 
@@ -134,9 +180,10 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('uv')
     parser.add_argument('--install-only', action='store_true')
+    parser.add_argument('--verbose', action='store_true')
     args = parser.parse_args()
     try:
-        install(args.uv, args.install_only)
+        install(args.uv, args.install_only, args.verbose)
     except subprocess.CalledProcessError as exc:
         sys.exit(exc.returncode)
     except (RuntimeError, OSError) as exc:

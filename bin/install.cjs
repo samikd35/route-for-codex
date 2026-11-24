@@ -3,12 +3,12 @@ const { spawnSync } = require('node:child_process');
 const path = require('node:path');
 
 const args = process.argv.slice(2);
-const usage = 'Usage: npx samikd35/route-for-codex [--install-only]';
+const usage = 'Usage: npx samikd35/route-for-codex [--install-only] [--verbose]';
 if (args.length === 1 && ['--help', '-h'].includes(args[0])) {
   console.log(usage);
   process.exit(0);
 }
-if (args.length > 0 && !(args.length === 1 && args[0] === '--install-only')) {
+if (args.some(arg => !['--install-only', '--verbose'].includes(arg))) {
   console.error(usage);
   process.exit(2);
 }
@@ -27,7 +27,8 @@ if (process.platform === 'darwin') {
     if (key.toLowerCase() === 'psmodulepath') delete env[key];
   }
   options = ['-NoProfile', '-File', path.join(root, 'install.ps1')];
-  if (args.length) options.push('-InstallOnly');
+  if (args.includes('--install-only')) options.push('-InstallOnly');
+  if (args.includes('--verbose')) options.push('-Verbose');
 } else {
   console.error('This installer supports macOS and Windows.');
   process.exit(1);

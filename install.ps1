@@ -1,8 +1,10 @@
 # Install the Route CLI for the current Windows user, including from Windows PowerShell 5.1.
+[CmdletBinding()]
 param([switch]$InstallOnly)
+$showDetails = $PSBoundParameters.ContainsKey('Verbose')
 & {
     $ErrorActionPreference = 'Stop'
-    $ProgressPreference = 'SilentlyContinue'
+    if ([Console]::IsOutputRedirected) { $ProgressPreference = 'SilentlyContinue' }
     [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
     $arch = if ($env:PROCESSOR_ARCHITEW6432) { $env:PROCESSOR_ARCHITEW6432 } else { $env:PROCESSOR_ARCHITECTURE }
     switch ($arch) {
@@ -12,7 +14,8 @@ param([switch]$InstallOnly)
     }
     $tmp = New-Item -ItemType Directory -Path ([IO.Path]::Combine([IO.Path]::GetTempPath(), [guid]::NewGuid().ToString()))
     try {
-        Write-Host 'Preparing the Route command-line installer...'
+        Write-Host 'Route for Codex'
+        Write-Host 'Downloading the installer runtime...'
         $zip = Join-Path $tmp 'uv.zip'
         Invoke-WebRequest -UseBasicParsing "https://github.com/astral-sh/uv/releases/download/0.13.9/uv-$target.zip" -OutFile $zip
         if ((Get-FileHash $zip -Algorithm SHA256).Hash -ne $digest) { throw 'uv download checksum mismatch' }
@@ -20,6 +23,7 @@ param([switch]$InstallOnly)
         $uv = (Get-ChildItem (Join-Path $tmp 'uv') -Recurse -Filter 'uv.exe' -File).FullName
         $ref = if ($env:ROUTE_INSTALL_REF) { $env:ROUTE_INSTALL_REF } else { 'main' }
         if ($ref -notmatch '^[a-zA-Z0-9._-]+$') { throw 'Invalid Route revision' }
+        Write-Host 'Downloading Route...'
         $source = Join-Path $tmp 'source'
         $zip = Join-Path $tmp 'route.zip'
         Invoke-WebRequest -UseBasicParsing "https://codeload.github.com/samikd35/route-for-codex/zip/$ref" -OutFile $zip
@@ -27,7 +31,10 @@ param([switch]$InstallOnly)
         $entry = Join-Path (Get-ChildItem $source -Directory).FullName 'tools\install_cli.py'
         $options = @()
         if ($InstallOnly) { $options += '--install-only' }
-        & $uv run --no-project --managed-python --python 3.13 -- python -I $entry $uv @options
+        $detail = '--quiet'
+        if ($showDetails) { $options += '--verbose'; $detail = '--verbose' }
+        Write-Host 'Preparing Python...'
+        & $uv $detail run --no-project --managed-python --python 3.13 -- python -I $entry $uv @options
         if ($LASTEXITCODE -ne 0) { throw "Route setup exited with code $LASTEXITCODE" }
         $env:Path = (Join-Path $env:LOCALAPPDATA 'RouteForCodexCLI\bin') + ';' + $env:Path
     } finally {

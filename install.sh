@@ -8,15 +8,24 @@ case "$(uname -s):$(uname -m)" in
 esac
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
-download() { curl --proto '=https' --fail --silent --show-error --location --retry 2 "$1" -o "$2"; }
-echo 'Preparing the Route command-line installer…'
+meter=--silent
+if [ -t 2 ]; then meter=--progress-bar; fi
+download() { curl "$meter" --proto '=https' --fail --show-error --location --retry 2 "$1" -o "$2"; }
+echo 'Route for Codex'
+echo 'Downloading the installer runtime…'
 download "https://github.com/astral-sh/uv/releases/download/0.13.9/uv-$target.tar.gz" "$tmp/uv.tar.gz"
-printf '%s  %s\n' "$digest" "$tmp/uv.tar.gz" | shasum -a 256 -c -
+printf '%s  %s\n' "$digest" "$tmp/uv.tar.gz" | shasum -a 256 --status -c - || { echo "Installer runtime checksum mismatch" >&2; exit 1; }
 tar -xzf "$tmp/uv.tar.gz" -C "$tmp" "uv-$target/uv"
 uv="$tmp/uv-$target/uv"
 ref=${ROUTE_INSTALL_REF:-main}
 case "$ref" in *[!a-zA-Z0-9._-]*) echo 'Invalid Route revision' >&2; exit 1 ;; esac
+echo 'Downloading Route…'
 download "https://codeload.github.com/samikd35/route-for-codex/tar.gz/$ref" "$tmp/route.tar.gz"
 mkdir "$tmp/source"
 tar -xzf "$tmp/route.tar.gz" --strip-components=1 -C "$tmp/source"
-"$uv" run --no-project --managed-python --python 3.13 -- python -I "$tmp/source/tools/install_cli.py" "$uv" "$@"
+quiet=--quiet
+for option in "$@"; do
+    if [ "$option" = --verbose ]; then quiet=--verbose; fi
+done
+echo 'Preparing Python…'
+"$uv" "$quiet" run --no-project --managed-python --python 3.13 -- python -I "$tmp/source/tools/install_cli.py" "$uv" "$@"

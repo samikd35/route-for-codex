@@ -40,10 +40,10 @@ def main():
     subprocess.run(bundle, check=True)
     subprocess.run([str(python), '-I', '-m', 'pip', 'install', '-e', str(root)], check=True)
     if args.connect:
-        subprocess.run([str(command), 'connect'], check=True)
+        subprocess.run([str(command), 'onboard'], check=True)
     else:
         launch = '& "' + str(command) + '"' if windows else shlex.quote(str(command))
-        print(f'Installed Route. To connect your API key, run:\n{launch} connect')
+        print(f'Installed Route. To connect your API key, run:\n{launch} onboard')
 
 
 if __name__ == '__main__':

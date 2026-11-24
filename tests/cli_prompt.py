@@ -28,7 +28,8 @@ def main():
         result = subprocess.run(command, cwd=work, env=env, input='\n', capture_output=True,
                                 text=True, errors='replace', timeout=240)
         output = result.stdout + result.stderr
-        if result.returncode == 0 or 'OpenAI API key' not in output or 'Cancelled' not in output:
+        expected = ('Route is already installed.', 'OpenAI API key', 'Cancelled')
+        if result.returncode == 0 or not all(message in output for message in expected):
             raise RuntimeError('Rerunning the public install command did not reach and cancel the key prompt: '
                                + output[-1500:])
     print('The normal one-command install reached the key prompt. Cancellation made no API requests.')

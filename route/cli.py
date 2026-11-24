@@ -1,5 +1,5 @@
 import argparse
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 import getpass
 import json
 import os
@@ -9,7 +9,8 @@ import sys
 import time
 from urllib.error import HTTPError
 
-from .check import check, http_error
+from .progress import stage
+from .check import CredentialRejected, check, http_error
 from .models import discover, selection
 from .images import TOOL_SECONDS
 from .relay import API_PATHS, MATCH_PATH, CADDY, Relay, admin_socket, configuration, control
@@ -196,13 +197,19 @@ def install_picker(s):
     install(s, PORT, invocation('--home', str(s.home), 'picker-token'))
 
 
-def execute(s, action, prompt, *, initial_key=None):
+def execute(s, action, prompt, *, initial_key=None, progress=lambda label: nullcontext()):
+    onboarding = action == 'onboard'
     state = s.state
     active = s.active()
     if action == 'onboard':
         if not active and state.get('saved') and state.get('model'):
             execute(s, 'reconnect', prompt)
             active = True
+        if state.get('saved') and not state.get('model') and initial_key is None:
+            try:
+                initial_key = vault().get_password(SERVICE, 'upstream')
+            except Exception:
+                raise RuntimeError('Unlock the OS credential store and run onboard again') from None
         if active and state.get('model'):
             action = 'test'
         else:
@@ -275,6 +282,8 @@ def execute(s, action, prompt, *, initial_key=None):
         else:
             s.start(key)
             state['default'] = False
+        state.pop('verified_selection', None)
+        state.pop('model', None)
         # A rejected replacement must never cause recovery with an older saved key.
         old_saved = state.get('saved', False)
         state.update(intended=False, waiting=False, saved=False, stale_saved=old_saved or state.get('stale_saved', False))
@@ -296,7 +305,8 @@ def execute(s, action, prompt, *, initial_key=None):
         s.save()
         # Remove old entries before discovery, including on a failed key replacement.
         write(s.home / 'models.json', '{"models":[]}')
-        catalog = discover(key)
+        with progress('Finding models available to your key'):
+            catalog = discover(key)
         write(s.home / 'models.json', json.dumps(catalog))
         if not catalog['models']:
             raise RuntimeError('This key has no discoverable compatible GPT-6-or-later model')
@@ -326,10 +336,44 @@ def execute(s, action, prompt, *, initial_key=None):
     selected = (state['model'], state['effort'])
     if action == 'test' and doc.get('model_provider') == 'route':
         selected = (doc.get('model', selected[0]), doc.get('model_reasoning_effort', selected[1]))
-    check(PORT, s.credential.read_text(), *selected)
-    s.register()
-    install_picker(s)
+    if not onboarding or state.get('verified_selection') != list(selected):
+        check(PORT, s.credential.read_text(), *selected, progress=progress)
+        state['verified_selection'] = list(selected)
+        s.save()
+    else:
+        print('Your connection was already verified.', flush=True)
+    with progress('Registering models with Codex'):
+        s.register()
+        install_picker(s)
     return 'Connection test passed.'
+
+
+def onboard(session, prompt):
+    action = 'onboard'
+    print('Connect your OpenAI project. Verifying a new key uses two billable model requests.\n'
+          'When prompted, paste your key and press Enter. Input is hidden.', flush=True)
+    while True:
+        try:
+            result = execute(session, action, prompt, progress=stage)
+            break
+        except (HTTPError, CredentialRejected) as exc:
+            if isinstance(exc, HTTPError) and exc.code not in (401, 403):
+                raise
+            if not sys.stdin.isatty():
+                raise
+            print('OpenAI rejected the key or its project permissions.', flush=True)
+            if not prompt.yes('Paste another key?'):
+                raise RuntimeError('Setup paused. Run route-for-codex onboard to continue.') from None
+            action = 'replace' if session.active() else 'connect'
+    print(result)
+    print('\nReady to use Route\n')
+    rows = json.loads((session.home / 'models.json').read_text())['models']
+    from .models import branded_rows
+    selected = next(row for row in branded_rows(rows) if row['slug'] == 'route-' + session.state['model'])
+    print('In a new Codex chat, open the model picker.')
+    if config()['model_providers']['route-combined']['requires_openai_auth']:
+        print('  Ordinary models    Use your existing Codex connection')
+    print(f'  {selected["display_name"]:<18} Uses your OpenAI project key')
 
 
 def main():
@@ -407,10 +451,11 @@ def main():
             show_setup()
             root.mainloop()
         else:
-            if args.action == 'onboard':
-                print('Route verifies your connection with two billable model requests. Your OpenAI project pays for chats through Route.', flush=True)
             with locked(s):
-                print(execute(s, args.action, Prompt()))
+                if args.action == 'onboard':
+                    onboard(s, Prompt())
+                else:
+                    print(execute(s, args.action, Prompt()))
     except HTTPError as exc:
         p.exit(1, str(http_error(exc.code)) + '\n')
     except (ValueError, RuntimeError, OSError, subprocess.SubprocessError) as exc:
