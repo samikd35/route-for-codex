@@ -32,6 +32,10 @@ The normal Route provider now registers its own `generate_image` tool. In an iso
 
 Qualify a platform only after every required check passes there. The deterministic fixtures use dummy credentials. The live image checks above used billable OpenAI requests and an isolated Codex configuration.
 
+## Terminal-only installation
+
+On November 24, 2026 the public terminal commands installed Route and OpenAI Codex CLI `0.171.0-alpha.13` on fresh macOS 26.7.2 arm64 and Windows Server 2025 x64 runners. Both discovered the command on the persistent PATH, recovered a dummy key from the native store, completed the setup challenge, and checked the exact reply from signed-out Codex through a local Responses fixture. Repeating the default installer reached the private key prompt and cancelled cleanly. Windows used Windows PowerShell 5.1 and PowerShell 7. This run used no live API credential. [Terminal installation run](https://github.com/samikd35/route-for-codex/actions/runs/45307759320)
+
 ## Fresh macOS and Windows installer checks
 
 Both clean-machine fixtures passed on November 23, 2026, using stock Codex CLI `0.171.0-alpha.13`. The live-key steps were skipped on this run. The production package still uses the single Route provider. [Full workflow run](https://github.com/samikd35/route-for-codex/actions/runs/45247655313)
