@@ -13,3 +13,5 @@ Blocked by: None for the development source installer.
 The command installs the public source snapshot under the current user. Native package release qualification continues under distribution/01.
 
 2026-11-24 · Both [fresh CLI installs](https://github.com/samikd35/route-for-codex/actions/runs/45307759320) passed key prompting, credential recovery, a signed-out fixture reply, cancellation and repeat installation.
+
+2026-11-24 · Add a single GitHub-backed `npx` command for Mac and Windows. Retain the direct installers for machines without Node.js or Git. Exercise both paths on fresh runners.

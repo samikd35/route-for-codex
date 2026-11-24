@@ -4,7 +4,16 @@ Route lets you use your OpenAI project key for coding and image generation in lo
 
 ## Install and connect from the terminal
 
-Open Terminal on macOS or PowerShell on Windows in the project folder where you want to use Codex. Run one command as your normal user. The installer downloads the public development source, installs its Python environment and relay, and installs OpenAI's Codex CLI if it is missing.
+In your project folder, run the same command in macOS Terminal or Windows PowerShell. It uses Node.js with npm (`npx`) and Git to start the installer from this GitHub repository.
+
+```sh
+npx samikd35/route-for-codex
+```
+
+If npm asks to install the package, answer **y**. Route installs its runtime and adds the official Codex CLI if it is missing. To install now and connect later, use `npx samikd35/route-for-codex --install-only`.
+
+<details>
+<summary>Install on a computer without Node.js or Git</summary>
 
 **macOS Terminal**
 
@@ -17,6 +26,8 @@ bash -c "$(curl -fsSL https://raw.githubusercontent.com/samikd35/route-for-codex
 ```powershell
 Invoke-RestMethod https://raw.githubusercontent.com/samikd35/route-for-codex/main/install.ps1 | Invoke-Expression
 ```
+
+</details>
 
 1. Paste your OpenAI project API key at the private terminal prompt. Route checks model access and verifies the connection with two billable model requests.
 2. Answer **y** to **Use Route by default for new Codex sessions?** and wait for **Connection test passed.**

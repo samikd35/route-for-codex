@@ -3,6 +3,8 @@ on:
   workflow_dispatch:
   push:
     paths:
+      - 'package.json'
+      - 'bin/install.cjs'
       - 'install.sh'
       - 'install.ps1'
       - 'tools/install_cli.py'
@@ -21,26 +23,48 @@ jobs:
       fail-fast: false
       matrix:
         os: [macos-latest, windows-latest]
+        launcher: [direct, npx]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 25
     env:
       ROUTE_INSTALL_REF: ${{ github.sha }}
+      NPX_ROUTE_SPEC: ${{ github.ref_name == 'main' && github.repository || format('{0}#{1}', github.repository, github.sha) }}
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        if: matrix.launcher == 'npx'
+        with:
+          node-version: 'lts/*'
+      - name: Install using the public npx command from outside the checkout
+        if: matrix.launcher == 'npx'
+        shell: pwsh
+        run: |
+          if ($IsMacOS) { $env:SHELL = '/bin/zsh' }
+          Set-Location $env:RUNNER_TEMP
+          npx --yes $env:NPX_ROUTE_SPEC --install-only
+          exit $LASTEXITCODE
       - name: Install Route and Codex from the public macOS command
-        if: runner.os == 'macOS'
+        if: runner.os == 'macOS' && matrix.launcher == 'direct'
         shell: bash
         env:
           SHELL: /bin/zsh
         run: |
           bash -c "$(curl -fsSL "https://raw.githubusercontent.com/$GITHUB_REPOSITORY/$GITHUB_SHA/install.sh")" -- --install-only
+      - name: Verify commands in a fresh Mac login shell
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
           /bin/zsh -lic 'command -v route-for-codex && route-for-codex status && codex --version'
           echo "$HOME/.local/share/route-for-codex/bin" >> "$GITHUB_PATH"
       - name: Install Route and Codex from the public Windows command
-        if: runner.os == 'Windows'
+        if: runner.os == 'Windows' && matrix.launcher == 'direct'
         shell: powershell
         run: |
           & ([scriptblock]::Create((Invoke-RestMethod "https://raw.githubusercontent.com/$env:GITHUB_REPOSITORY/$env:GITHUB_SHA/install.ps1"))) -InstallOnly
+      - name: Verify commands on the persisted Windows PATH
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: |
           $env:Path = [Environment]::GetEnvironmentVariable('Path','Machine') + ';' + [Environment]::GetEnvironmentVariable('Path','User')
           if ((route-for-codex status) -ne 'Disconnected.' -or $LASTEXITCODE -ne 0) { throw 'Fresh PATH status failed' }
           codex --version
@@ -63,4 +87,4 @@ jobs:
           }
           python -m tests.installed $cli --source-python $python
       - name: Re-run the public default command and cancel at the private prompt
-        run: python -m tests.cli_prompt
+        run: python -m tests.cli_prompt ${{ matrix.launcher }}

@@ -1,0 +1,16 @@
+{
+  "name": "route-for-codex",
+  "version": "0.1.0-dev.0",
+  "private": true,
+  "description": "Install Route for Codex from the terminal",
+  "license": "MIT",
+  "repository": "github:samikd35/route-for-codex",
+  "bin": {
+    "install-route-for-codex": "bin/install.cjs"
+  },
+  "files": [
+    "bin/install.cjs",
+    "install.sh",
+    "install.ps1"
+  ]
+}

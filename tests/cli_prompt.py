@@ -1,4 +1,5 @@
 """Prove the published default installer reaches a private key prompt from a project directory."""
+import argparse
 import os
 from pathlib import Path
 import subprocess
@@ -6,9 +7,17 @@ import tempfile
 
 
 def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('launcher', nargs='?', choices=['direct', 'npx'], default='direct')
+    args = parser.parse_args()
     ref = os.environ['ROUTE_INSTALL_REF']
     prefix = f'https://raw.githubusercontent.com/samikd35/route-for-codex/{ref}/install.'
-    if os.name == 'nt':
+    if args.launcher == 'npx':
+        if os.name == 'nt':
+            command = ['pwsh', '-NoProfile', '-Command', 'npx --yes $env:NPX_ROUTE_SPEC; exit $LASTEXITCODE']
+        else:
+            command = ['npx', '--yes', os.environ['NPX_ROUTE_SPEC']]
+    elif os.name == 'nt':
         # The first install step uses Windows PowerShell 5.1. Exercise PowerShell 7 here.
         command = ['pwsh', '-NoProfile', '-Command',
                    f"Invoke-RestMethod '{prefix}ps1' | Invoke-Expression"]
