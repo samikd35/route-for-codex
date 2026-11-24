@@ -10,3 +10,6 @@ route/bin/*
 !tools/*.py
 !tests
 !tests/*.py
+!dispatcher
+!dispatcher/*.go
+!dispatcher/go.mod

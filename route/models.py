@@ -28,6 +28,12 @@ def discover(key):
     req = urllib.request.Request('https://api.openai.com/v1/models', headers={'Authorization': 'Bearer ' + key})
     with urllib.request.build_opener(FixedOrigin()).open(req, timeout=20) as response:
         listed = json.load(response)
+    codex = codex_path()
+    catalog = json.loads(subprocess.check_output([codex, 'debug', 'models', '--bundled']))
+    return eligible(listed, catalog)
+
+
+def codex_path():
     codex = shutil.which('codex')
     if not codex:
         for path in (Path.home() / '.local/bin/codex', Path('/Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex'),
@@ -37,8 +43,7 @@ def discover(key):
                 break
     if not codex:
         raise RuntimeError('Could not locate the installed Codex CLI to read its model catalog')
-    catalog = json.loads(subprocess.check_output([codex, 'debug', 'models', '--bundled']))
-    return eligible(listed, catalog)
+    return codex
 
 
 def selection(catalog, previous, effort):
@@ -54,7 +59,10 @@ def selection(catalog, previous, effort):
 
 def route_rows(discovered, catalog):
     """Brand only eligible Route rows, keeping model capabilities and upgrades on their billing path."""
-    models = eligible(discovered, catalog)['models']
+    return branded_rows(eligible(discovered, catalog)['models'])
+
+
+def branded_rows(models):
     slugs = {model['slug'] for model in models}
     rows = []
     for model in models:

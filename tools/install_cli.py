@@ -84,7 +84,7 @@ def install(uv, only):
     bindir = data / 'bin'
     bindir.mkdir(mode=0o700, parents=True, exist_ok=True)
     fingerprint = hashlib.sha256()
-    for file in sorted([*ROOT.glob('route/*.py'), ROOT / 'pyproject.toml', Path(__file__)]):
+    for file in sorted([*ROOT.glob('route/*.py'), *ROOT.glob('dispatcher/*.go'), ROOT / 'dispatcher/go.mod', ROOT / 'tools/build_dispatcher.py', ROOT / 'pyproject.toml', Path(__file__)]):
         fingerprint.update(file.read_bytes())
     version = data / 'versions' / fingerprint.hexdigest()[:16]
     tool = version / 'tools/route-for-codex'
@@ -97,6 +97,7 @@ def install(uv, only):
         if not command.is_file():
             print('Installing Route and its local relay…', flush=True)
             stage_caddy(work)
+            subprocess.run([sys.executable, ROOT / 'tools/build_dispatcher.py'], check=True)
             subprocess.run([uv, 'tool', 'install', '--quiet', '--python', sys.executable, ROOT], check=True,
                            env=dict(os.environ, UV_TOOL_DIR=str(version / 'tools'),
                                     UV_TOOL_BIN_DIR=str(command.parent)))

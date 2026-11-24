@@ -16,6 +16,7 @@ def main():
     args = parser.parse_args()
     dest = Path(__file__).resolve().parents[1] / 'route/bin'
     dest.mkdir(exist_ok=True)
+    subprocess.run([sys.executable, Path(__file__).with_name('build_dispatcher.py')], check=True)
     if args.from_go or sys.platform != 'darwin' or os.uname().machine != 'arm64':
         # Build on the target OS; Go verifies the module and dependencies via sumdb.
         module = 'github.com/caddyserver/caddy/v2'

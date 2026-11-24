@@ -23,7 +23,7 @@ func main() {
 		return
 	}
 	method := "POST"
-	if action == "/config/apps/http/servers/route/routes/0/match/0/path" { method = "PATCH" } else if action != "/load" && action != "/stop" { os.Exit(2) }
+	if action == "/config/apps/http/servers/route/routes/0/match/0/path" { method = "PATCH" } else if action != "/load" && action != "/stop" && action != "/config/apps/http/servers/combined" { os.Exit(2) }
 	client := http.Client{Transport: &http.Transport{DialContext: dial}, Timeout: 10 * time.Second}
 	req, err := http.NewRequest(method, "http://localhost" + action, os.Stdin)
 	if err != nil { os.Exit(1) }

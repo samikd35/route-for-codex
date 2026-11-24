@@ -104,6 +104,7 @@ class Session:
         relay = Relay(PORT, key, admin=self.admin, detached=True)
         try:
             write(self.credential, relay.token)
+            self.state['picker_paths'] = True
             self.state['image_endpoint'] = True
             self.save()
             # Reap the detached child when this UI stays open across Disconnect.
@@ -116,8 +117,9 @@ class Session:
     def configure_images(self):
         # Upgrade the existing matcher through the private admin socket. Session-only
         # connections keep their in-memory upstream credential across this reload.
-        if not self.state.get('image_endpoint'):
+        if not self.state.get('picker_paths'):
             control(self.admin, MATCH_PATH, API_PATHS)
+            self.state['picker_paths'] = True
             self.state['image_endpoint'] = True
             self.save()
 
@@ -131,12 +133,6 @@ class Session:
                     'auth': {'command': sys.executable, 'args': invocation('--home', str(self.home), 'token')}}
         change(self.state, self.file, {'model_providers.route': provider, **self.image_settings()})
 
-    def activate(self):
-        change(self.state, self.file, {'model_provider': 'route', 'model_catalog_json': str(self.home / 'models.json'),
-                                      'model': self.state['model'], 'model_reasoning_effort': self.state['effort']})
-        self.state['default'] = True
-        self.save()
-
     def stop(self):
         if self.active():
             control(self.admin, '/stop')
@@ -146,6 +142,7 @@ class Session:
                 time.sleep(.02)
             else:
                 raise RuntimeError('Timed out waiting for relay shutdown')
+        (self.home / 'picker.token').unlink(missing_ok=True)
         self.credential.unlink(missing_ok=True)
         self.state.update(intended=False, waiting=False)
         self.save()
@@ -194,7 +191,12 @@ class Prompt:
         return value.strip()
 
 
-def execute(s, action, prompt, *, initial_key=None, make_default=None):
+def install_picker(s):
+    from .picker import install
+    install(s, PORT, invocation('--home', str(s.home), 'picker-token'))
+
+
+def execute(s, action, prompt, *, initial_key=None):
     state = s.state
     active = s.active()
     if action == 'onboard':
@@ -253,8 +255,8 @@ def execute(s, action, prompt, *, initial_key=None, make_default=None):
             raise RuntimeError('The saved API key was not found. Connect with a key.')
         s.start(key)
         s.register()
-        if state.get('default') and state.get('model') and not (action == 'login' and state.get('journal')):
-            s.activate()
+        if state.get('model'):
+            install_picker(s)
         state.update(intended=True, waiting=False)
         s.save()
         return 'Reconnected.'
@@ -314,7 +316,6 @@ def execute(s, action, prompt, *, initial_key=None, make_default=None):
             selected = selection(catalog, model, None)
         state['model'], state['effort'] = selected
         s.save()
-        s.register()
     elif action != 'test':
         raise RuntimeError('Unknown action')
     if not s.active():
@@ -326,13 +327,8 @@ def execute(s, action, prompt, *, initial_key=None, make_default=None):
     if action == 'test' and doc.get('model_provider') == 'route':
         selected = (doc.get('model', selected[0]), doc.get('model_reasoning_effort', selected[1]))
     check(PORT, s.credential.read_text(), *selected)
-    if doc.get('model_provider') == 'route':
-        activate = action != 'test'
-    else:
-        activate = make_default if make_default is not None else prompt.yes('Use Route by default for new Codex sessions?')
-    if activate:
-        s.register()
-        s.activate()
+    s.register()
+    install_picker(s)
     return 'Connection test passed.'
 
 
@@ -340,7 +336,7 @@ def main():
     p = argparse.ArgumentParser(prog='route-for-codex')
     p.add_argument('--home', help=argparse.SUPPRESS)
     p.add_argument('--relay-port', type=int, default=PORT, help=argparse.SUPPRESS)
-    actions = ('connect', 'test', 'select', 'replace', 'disconnect', 'reconnect', 'forget', 'status', 'setup', 'login', 'token', 'images-mcp', 'onboard')
+    actions = ('connect', 'test', 'select', 'replace', 'disconnect', 'reconnect', 'forget', 'status', 'setup', 'login', 'token', 'images-mcp', 'onboard', 'picker-token')
     p.add_argument('action', choices=actions, nargs='?', default='setup')
     args = p.parse_args()
     if args.home:
@@ -351,10 +347,10 @@ def main():
             from .images import serve
             serve(s, args.relay_port)
             return
-        if args.action == 'token':
+        if args.action in ('token', 'picker-token'):
             if not s.active():
                 raise RuntimeError('Relay stopped')
-            print(s.credential.read_text())
+            print(((s.home / 'picker.token') if args.action == 'picker-token' else s.credential).read_text())
             return
         if args.action == 'setup':
             import tkinter as tk
@@ -371,8 +367,8 @@ def main():
                 except Exception as exc:
                     messagebox.showerror('Route', str(http_error(exc.code)) if isinstance(exc, HTTPError) else str(exc))
                     return False
-                if result == 'Connection test passed.' and s.state.get('default'):
-                    result += ' Open a new local Codex chat to use Route.'
+                if result == 'Connection test passed.':
+                    result += ' Open a new local Codex chat and select a Route model.'
                 messagebox.showinfo('Route', result)
                 show_setup()
                 return True
@@ -391,9 +387,6 @@ def main():
                 field.focus_set()
                 tk.Label(panel, text='Route verifies your key with two billable model requests.\nCoding and image generation use your OpenAI project.',
                          anchor='w', justify='left').pack(fill='x', pady=8)
-                default = tk.BooleanVar(value=True)
-                tk.Checkbutton(panel, text='Use Route for new Codex chats', variable=default).pack(anchor='w')
-
                 def connect():
                     key = field.get().strip()
                     if not key:
@@ -403,7 +396,7 @@ def main():
                     submit.config(state='disabled', text='Checking connection…')
                     root.update_idletasks()
                     # A rejected first key can leave an active relay. A retry must rotate it.
-                    if not click('replace' if s.active() else 'connect', initial_key=key, make_default=default.get()):
+                    if not click('replace' if s.active() else 'connect', initial_key=key):
                         submit.config(state='normal', text='Connect to Codex')
                         field.focus_set()
 

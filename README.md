@@ -30,7 +30,7 @@ Invoke-RestMethod https://raw.githubusercontent.com/samikd35/route-for-codex/mai
 </details>
 
 1. Paste your OpenAI project API key at the private terminal prompt. Route checks model access and verifies the connection with two billable model requests.
-2. Answer **y** to **Use Route by default for new Codex sessions?** and wait for **Connection test passed.**
+2. Wait for **Connection test passed.** In the combined-picker build, a ChatGPT sign-in keeps its ordinary model selected. Choose **Route 6.2 Sol** or another **Route** row in a new chat to use your project key. With only a project key, setup selects an eligible Route model.
 3. Answer **y** to open Codex in the current folder. Later, open a fresh terminal in any project and run `codex`.
 
 The install runs under your user account. It leaves the system networking command `route` available. Route uses Keychain or Windows Credential Manager for the key and offers session-only use when secure storage is unavailable. Your OpenAI project pays for requests sent through Route.
@@ -68,11 +68,11 @@ For the setup window on macOS or Linux, run `.venv/bin/route-for-codex setup`. O
 
 The upstream key goes to the OS credential store, or remains in relay memory for a session-only connection. The credential helper reads only a local token from the private Route directory. Caddy consumes its configuration on stdin, disables config persistence and emits no request logs. Rotation reloads it via a private filesystem socket. `CODEX_HOME` selects the Codex profile; `ROUTE_HOME` selects private Route state (default `~/.route`). These overrides do **not** isolate the OS keychain: use a separate OS account for live qualification. Disconnect or Forget before removing an installed build.
 
-The [combined-picker proof](docs/combined-picker-proof.md) runs separately in a disposable profile. The current setup command still registers the legacy Route provider.
+The [combined-picker proof](docs/combined-picker-proof.md) runs separately in a disposable profile. Setup retains the legacy provider for existing Route chats and registers the combined provider for new chats.
 
 ## Generate an image using only your API key
 
-1. If Route is already connected, continue to step 2. Otherwise run `route-for-codex onboard` and choose Route for new chats. Your key needs access to the selected coding model and `gpt-image-2`.
+1. If Route is already connected, continue to step 2. Otherwise run `route-for-codex onboard` and select a Route model in a new chat. Your key needs access to the selected coding model and `gpt-image-2`.
 2. Run `codex` in a project folder. Ask **Use Route’s generate_image tool to create a red kite above a blue lake. Save it as kite.png and make an index.html that displays it.** Approve the tool call if prompted. Each generation uses your OpenAI project.
 3. Open the resulting `index.html` and confirm the illustration is visible. The [repeatable image check and results](docs/api-key-only-images.md) include the exact qualification prompt and verified image hashes.
 

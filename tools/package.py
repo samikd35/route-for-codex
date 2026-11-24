@@ -31,6 +31,7 @@ def main():
                         '--paths', str(ROOT), '--distpath', str(dest), '--workpath', str(work / 'build'),
                         '--specpath', tmp, '--collect-submodules', 'keyring.backends', '--copy-metadata', 'mcp',
                         '--add-binary', f'{binary}{os.pathsep}route/bin',
+                        '--add-binary', f'{binary.with_name("dispatcher.exe" if win else "dispatcher")}{os.pathsep}route/bin',
                         '--add-data', f'{binary.parent / "LICENSE"}{os.pathsep}route/bin',
                         '--add-data', f'{ROOT / "LICENSE"}{os.pathsep}.',
                         *(['--add-binary', f'{binary.parent / "control.exe"}{os.pathsep}route/bin'] if win else []),
@@ -43,7 +44,7 @@ def main():
             (app / 'MacOS/_internal').rename(app / 'Frameworks')
             put(app / 'Info.plist', plistlib.dumps({'CFBundleExecutable': 'route', 'CFBundleName': 'Route',
                 'CFBundleIdentifier': 'local.route.setup', 'CFBundlePackageType': 'APPL',
-                'CFBundleVersion': '1', 'CFBundleShortVersionString': '0.1'}))
+                'CFBundleVersion': '2', 'CFBundleShortVersionString': '0.1.1'}))
             exe = '/Applications/Route.app/Contents/MacOS/route'
             put(root / 'Library/LaunchAgents/local.route.login.plist', plistlib.dumps({
                 'Label': 'local.route.login', 'ProgramArguments': [exe, 'login'], 'RunAtLoad': True}))
@@ -52,7 +53,7 @@ def main():
             (bindir / 'route-for-codex').symlink_to(exe)
             target = out / f'Route-dev-{platform.machine()}.pkg'
             subprocess.run(['pkgbuild', '--root', str(root), '--identifier', 'local.route.dev',
-                            '--version', '0.1', '--install-location', '/', str(target)], check=True)
+                            '--version', '0.1.1', '--install-location', '/', str(target)], check=True)
         elif sys.platform.startswith('linux'):
             target = out / f'route-dev-{platform.machine()}.deb'
             (root / 'opt').mkdir(parents=True)
@@ -63,7 +64,7 @@ def main():
             for path, action in [('usr/share/applications/route-codex.desktop', 'setup'), ('etc/xdg/autostart/route-codex.desktop', 'login')]:
                 put(root / path, f'[Desktop Entry]\nType=Application\nName=Route for Codex\nExec=/opt/route/route {action}\nTerminal=false\n')
             arch = subprocess.check_output(['dpkg', '--print-architecture'], text=True).strip()
-            put(root / 'DEBIAN/control', f'Package: route-for-codex\nVersion: 0.1~dev\nArchitecture: {arch}\nMaintainer: Route developers\nDescription: Local Responses relay for Codex\n')
+            put(root / 'DEBIAN/control', f'Package: route-for-codex\nVersion: 0.1~dev1\nArchitecture: {arch}\nMaintainer: Route developers\nDescription: Local Responses relay for Codex\n')
             subprocess.run(['dpkg-deb', '--build', '--root-owner-group', str(root), str(target)], check=True)
         elif win:
             target = out / 'Route-dev-setup.exe'
@@ -74,7 +75,7 @@ def main():
             put(script, f'''[Setup]
 AppId=RouteForCodex
 AppName=Route for Codex
-AppVersion=0.1dev
+AppVersion=0.1dev1
 DefaultDirName={{localappdata}}\\Programs\\RouteForCodex
 PrivilegesRequired=lowest
 ChangesEnvironment=yes

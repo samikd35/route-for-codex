@@ -169,12 +169,12 @@ def exercise(exe, codex, root, live, source_python=None):
     with nullcontext() if live else fixture(caddy, codex, env, project, marker):
         try:
             if live:
-                result = run([exe, action], env, project, answers=key + '\ny\n', timeout=240)
+                result = run([exe, action], env, project, answers=key + '\n', timeout=240)
             else:
                 result = run([exe, 'test'], env, project, answers='y\n')
             require('Connection test passed.' in result, 'Two-request setup challenge failed')
             doc = tomllib.loads(config.read_text())
-            require(doc.get('model_provider') == 'route' and doc['model'] == MODEL,
+            require(doc.get('model_provider') == 'route-combined' and doc['model'] == 'route-' + MODEL,
                     'Route was not selected as the default')
             require(Path(doc['model_providers']['route']['auth']['command']).samefile(source_python or exe),
                     'Codex credential helper does not point to the installed app')

@@ -29,10 +29,19 @@ def config():
     return tomlkit.parse(p.read_text()) if p.exists() else tomlkit.document()
 
 
-def change(state, statefile, values=None):
+def change(state, statefile, values=None, *, restore_defaults=()):
     doc = config()
     original = tomlkit.dumps(doc)
     journal = copy.deepcopy(state.get('journal', {}))
+    # Transfer the old installer's top-level settings in the same TOML write.
+    for key in restore_defaults:
+        if key in journal and key not in (values or {}):
+            old, written = journal.pop(key)
+            if doc.get(key) == written:
+                if old is None:
+                    del doc[key]
+                else:
+                    doc[key] = old
     for path in (values if values is not None else list(journal)):
         parent = doc
         if '.' in path:

@@ -15,6 +15,12 @@ from tests.fixture import free_port, provider
 
 
 class SetupTest(unittest.TestCase):
+    def setUp(self):
+        # Unit profiles never inherit the developer's real account or client version.
+        self.enterContext(patch('route.picker.desktop_clients', return_value=()))
+        self.enterContext(patch('route.picker.client_version', return_value='0.171.0'))
+        self.enterContext(patch('route.picker.native_login', return_value=False))
+
     def test_model_subsets(self):
         catalog = json.loads(subprocess.check_output(['codex', 'debug', 'models', '--bundled']))
         sample = catalog['models'][0]
@@ -49,8 +55,8 @@ class SetupTest(unittest.TestCase):
         self.assertEqual(len(calls[1]['input'][-1]['output']), 48)
 
     def test_first_run_key_and_default_selection(self):
-        for make_default in (False, True):
-            with self.subTest(make_default=make_default), tempfile.TemporaryDirectory() as d, \
+        for native in (False, True):
+            with self.subTest(native=native), tempfile.TemporaryDirectory() as d, \
                     patch.dict(os.environ, ROUTE_HOME=d, CODEX_HOME=d), patch('route.cli.PORT', free_port()), \
                     patch('route.cli.discover') as discover, patch('route.cli.vault') as store, patch('route.cli.check') as probe:
                 discover.return_value = {'models': [{'slug': 'gpt-6.2-sol',
@@ -59,8 +65,11 @@ class SetupTest(unittest.TestCase):
                 session.load()
                 prompt = Mock()
                 try:
-                    execute(session, 'connect', prompt, initial_key='fixture-key', make_default=make_default)
-                    self.assertEqual(config().get('model_provider') == 'route', make_default)
+                    (Path(d) / 'config.toml').write_text('model = "gpt-6.2-astra"\n')
+                    with patch('route.picker.native_login', return_value=native):
+                        execute(session, 'connect', prompt, initial_key='fixture-key')
+                    self.assertEqual(config()['model_provider'], 'route-combined')
+                    self.assertEqual(config()['model'], 'gpt-6.2-astra' if native else 'route-gpt-6.2-sol')
                     self.assertIn('route_images', config()['mcp_servers'])
                     self.assertEqual(store.return_value.set_password.call_args.args[-1], 'fixture-key')
                     probe.assert_called_once()
@@ -83,13 +92,13 @@ class SetupTest(unittest.TestCase):
             try:
                 execute(s, 'connect', p)
                 first = s.credential.read_text()
-                self.assertEqual(config()['model_provider'], 'route')
+                self.assertEqual(config()['model_provider'], 'route-combined')
                 for name in ('state.json', 'config.toml', 'models.json'):
                     data = (Path(d) / name).read_text()
                     self.assertNotIn(first, data)
                     self.assertNotIn('dummy-secret', data)
                 path = Path(d) / 'config.toml'
-                path.write_text(path.read_text().replace('model = "gpt-6.2-sol"', 'model = "user-edit"'))
+                path.write_text(path.read_text().replace('model = "route-gpt-6.2-sol"', 'model = "user-edit"'))
                 execute(s, 'disconnect', p)
                 self.assertNotIn('model_provider', config())
                 self.assertEqual(config()['model'], 'user-edit')

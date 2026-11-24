@@ -10,7 +10,7 @@ import time
 
 CADDY = Path(__file__).parent / ('bin/caddy.exe' if sys.platform == 'win32' else 'bin/caddy')
 ORIGIN = 'api.openai.com:443'
-API_PATHS = ['/v1/responses', '/v1/images/generations']
+API_PATHS = ['/v1/responses', '/v1/responses/compact', '/v1/images/generations', '/v1/images/edits']
 MATCH_PATH = '/config/apps/http/servers/route/routes/0/match/0/path'
 
 

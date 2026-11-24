@@ -94,7 +94,10 @@ def main():
             with patch('route.cli.PORT', r.port):
                 s.register()
             s.state.update(model=model['slug'], effort='medium')
-            s.activate()
+            # Exercise existing conversations that still use the legacy provider.
+            from route.settings import change
+            change(s.state, s.file, {'model_provider': 'route', 'model': model['slug'],
+                                     'model_catalog_json': str(s.home / 'models.json')})
             from route.settings import config, config_path
             import tomlkit
             doc = config()

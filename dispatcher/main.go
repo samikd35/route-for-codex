@@ -17,6 +17,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -34,8 +35,8 @@ func field(row modelRow, name string) string {
 }
 
 type config struct {
-	Socket, GatewayToken, RouteKey string
-	NativeURL, RouteURL            string
+	Socket, Lease, GatewayToken, RouteKey string
+	NativeURL, RouteURL                   string
 	// The proof stages one catalog per installed client version.
 	Catalogs map[string][]modelRow
 }
@@ -365,7 +366,7 @@ func run() error {
 		return err
 	}
 	dir, err := os.Stat(filepath.Dir(c.Socket))
-	if err != nil || !dir.IsDir() || dir.Mode().Perm()&0077 != 0 {
+	if err != nil || !dir.IsDir() || (runtime.GOOS != "windows" && dir.Mode().Perm()&0077 != 0) {
 		return errors.New("dispatcher socket requires a private directory")
 	}
 	addr, err := net.Listen("unix", c.Socket)
@@ -384,6 +385,20 @@ func run() error {
 	defer controlServer.Close()
 	go controlServer.Serve(controlSocket)
 	server := http.Server{Handler: dispatch, ReadHeaderTimeout: 10 * time.Second, ErrorLog: log.New(io.Discard, "", 0)}
+	if c.Lease != "" {
+		go func() {
+			// Allow the parent to stage Caddy and atomically publish the new token.
+			time.Sleep(10 * time.Second)
+			for {
+				value, err := os.ReadFile(c.Lease)
+				if err != nil || !equalToken([]string{"Bearer " + string(value)}, c.GatewayToken) {
+					server.Close()
+					return
+				}
+				time.Sleep(time.Second)
+			}
+		}()
+	}
 	return server.Serve(addr)
 }
 

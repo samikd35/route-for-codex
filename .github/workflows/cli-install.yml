@@ -8,6 +8,8 @@ on:
       - 'install.sh'
       - 'install.ps1'
       - 'tools/install_cli.py'
+      - 'dispatcher/**'
+      - 'tools/build_dispatcher.py'
       - 'route/**'
       - 'pyproject.toml'
       - 'tests/installed.py'
