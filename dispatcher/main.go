@@ -38,7 +38,8 @@ type config struct {
 	Socket, Lease, GatewayToken, RouteKey string
 	NativeURL, RouteURL                   string
 	// The proof stages one catalog per installed client version.
-	Catalogs map[string][]modelRow
+	CatalogCommand []string
+	Catalogs       map[string][]modelRow
 }
 
 type gateway struct {
@@ -172,7 +173,7 @@ func (g *gateway) nativeCatalog(r *http.Request, version string) ([]modelRow, er
 }
 
 func (g *gateway) catalog(w http.ResponseWriter, r *http.Request) {
-	version := r.URL.Query().Get("client_version")
+	version, _, _ := strings.Cut(r.URL.Query().Get("client_version"), "-")
 	rows, ok := g.config.Catalogs[version]
 	if !ok {
 		reject(w, 409, "No Route catalog for this Codex version")

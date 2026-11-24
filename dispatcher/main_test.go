@@ -3,9 +3,11 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"sync"
 	"testing"
@@ -283,5 +285,37 @@ func TestPrivateRotationPinsStreamAndRevokesAliases(t *testing.T) {
 	defer mu.Unlock()
 	if len(keys) != 2 || keys[0] != "Bearer original" || keys[1] != "Bearer new" {
 		t.Fatal("unexpected billed requests")
+	}
+}
+
+func TestRefreshForNewClientVersion(t *testing.T) {
+	if os.Getenv("ROUTE_TEST_CATALOG_CHILD") == "1" {
+		if os.Args[len(os.Args)-1] != "0.172.0" {
+			os.Exit(2)
+		}
+		fmt.Print(`[{"slug":"route-gpt-6.2-sol"}]`)
+		os.Exit(0)
+	}
+	t.Setenv("ROUTE_TEST_CATALOG_CHILD", "1")
+	g, err := newGateway(config{GatewayToken: "token", RouteKey: "route", NativeURL: "https://chatgpt.com/backend-api/codex", RouteURL: "https://api.openai.com/v1", Catalogs: map[string][]modelRow{"0.171.0": {}}, CatalogCommand: []string{os.Args[0], "-test.run=^TestRefreshForNewClientVersion$", "--"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	d := &dispatcher{}
+	d.active.Store(g)
+	path := "/v1/models?client_version=0.172.0-alpha.1"
+	if r := call(d, "GET", path, "", "bad", ""); r.Code != 401 || d.active.Load() != g {
+		t.Fatal("unauthorized refresh")
+	}
+	if r := call(d, "GET", path, "", "token", ""); r.Code != 200 || !strings.Contains(r.Body.String(), "route-gpt-6.2-sol") {
+		t.Fatalf("refresh failed: %d %s", r.Code, r.Body)
+	}
+	refreshed := d.active.Load()
+	if refreshed == g || refreshed.routingState != g.routingState || !refreshed.eligibleAlias("0.172.0", "route-gpt-6.2-sol") {
+		t.Fatal("routing snapshot")
+	}
+	call(d, "GET", path, "", "token", "")
+	if d.active.Load() != refreshed {
+		t.Fatal("unexpected duplicate refresh")
 	}
 }
