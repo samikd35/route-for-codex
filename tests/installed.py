@@ -45,7 +45,7 @@ def run(args, env, cwd, *, answers=None, expected=0, timeout=150):
     return result.stdout.strip()
 
 
-def check_dummy_key(exe, env, project):
+def check_dummy_key(exe, env, project, action):
     """Drive connect and the OS vault while keeping discovery entirely offline."""
     require(os.environ.get('RUNNER_ENVIRONMENT') == 'github-hosted' and os.environ.get('GITHUB_ACTIONS') == 'true',
             'The native credential check requires a disposable hosted account')
@@ -65,7 +65,7 @@ def check_dummy_key(exe, env, project):
         try:
             proxy = f'http://127.0.0.1:{server.server_port}'
             offline = dict(env, https_proxy=proxy, HTTPS_PROXY=proxy, NO_PROXY='', no_proxy='')
-            run([exe, 'connect'], offline, project, answers=DUMMY_KEY + '\nn\n', expected=1)
+            run([exe, action], offline, project, answers=DUMMY_KEY + '\nn\n', expected=1)
             require(attempted == ['api.openai.com:443'], 'Setup did not reach model discovery using the dummy key')
             config = tomllib.loads((Path(env['CODEX_HOME']) / 'config.toml').read_text())
             require('model_provider' not in config, 'Failed discovery changed the default provider')
@@ -79,7 +79,7 @@ def check_dummy_key(exe, env, project):
 
 
 @contextmanager
-def fixture(exe, codex, env, project, marker):
+def fixture(caddy, codex, env, project, marker):
     home = Path(env['ROUTE_HOME'])
     calls = []
     errors = []
@@ -119,8 +119,6 @@ def fixture(exe, codex, env, project, marker):
     model['use_responses_lite'] = False  # This fixture speaks streaming Responses.
     (home / 'models.json').write_text(json.dumps({'models': [model]}))
     (home / 'state.json').write_text(json.dumps({'model': MODEL, 'effort': 'medium', 'image_endpoint': True}))
-    caddy = (exe.parent / '_internal/route/bin/caddy.exe' if os.name == 'nt'
-             else exe.parent.parent / 'Frameworks/route/bin/caddy')
     require(caddy.is_file(), 'Installed Caddy missing')
     with provider(respond) as port, patch.object(relay, 'CADDY', caddy):
         service = relay.Relay(PORT, DUMMY_KEY, origin=f'127.0.0.1:{port}', admin=home / 'admin.sock')
@@ -132,7 +130,7 @@ def fixture(exe, codex, env, project, marker):
             service.close()
 
 
-def exercise(exe, codex, root, live):
+def exercise(exe, codex, root, live, source_python=None):
     key = os.environ.pop('ROUTE_INSTALL_TEST_KEY', None)
     if live:
         require(os.environ.get('RUNNER_ENVIRONMENT') == 'github-hosted' and os.environ.get('GITHUB_ACTIONS') == 'true',
@@ -158,19 +156,24 @@ def exercise(exe, codex, root, live):
     marker = 'route-' + secrets.token_hex(12)
     mode = 'live' if live else 'fixture'
     print(f'{platform.platform()} {platform.machine()} | {run([codex, "--version"], env, project)} | {mode}', flush=True)
+    caddy = (exe.parent / '_internal/route/bin/caddy.exe' if os.name == 'nt'
+             else exe.parent.parent / 'Frameworks/route/bin/caddy')
+    if source_python:
+        caddy = Path(run([source_python, '-I', '-c', 'from route.relay import CADDY; print(CADDY)'], env, project))
+    action = 'onboard' if source_python else 'connect'
     if not live:
-        check_dummy_key(exe, env, project)
-    with nullcontext() if live else fixture(exe, codex, env, project, marker):
+        check_dummy_key(exe, env, project, action)
+    with nullcontext() if live else fixture(caddy, codex, env, project, marker):
         try:
             if live:
-                result = run([exe, 'connect'], env, project, answers=key + '\ny\n', timeout=240)
+                result = run([exe, action], env, project, answers=key + '\ny\n', timeout=240)
             else:
                 result = run([exe, 'test'], env, project, answers='y\n')
             require('Connection test passed.' in result, 'Two-request setup challenge failed')
             doc = tomllib.loads(config.read_text())
             require(doc.get('model_provider') == 'route' and doc['model'] == MODEL,
                     'Route was not selected as the default')
-            require(Path(doc['model_providers']['route']['auth']['command']).samefile(exe),
+            require(Path(doc['model_providers']['route']['auth']['command']).samefile(source_python or exe),
                     'Codex credential helper does not point to the installed app')
             if live:
                 require('saved on this device' in run([exe, 'disconnect'], env, project), 'Native key storage failed')
@@ -191,6 +194,7 @@ def exercise(exe, codex, root, live):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('exe', type=Path, help='Installed Route executable')
+    parser.add_argument('--source-python', type=Path, help='Interpreter of a CLI source installation')
     parser.add_argument('--live', action='store_true')
     args = parser.parse_args()
     exe = args.exe.resolve(strict=True)
@@ -198,7 +202,7 @@ def main():
     require(codex, 'Install Codex CLI first')
     # Darwin limits the length of a Unix socket path.
     with tempfile.TemporaryDirectory(prefix='ri-', dir='/tmp' if sys.platform == 'darwin' else None) as temp:
-        exercise(exe, codex, Path(temp), args.live)
+        exercise(exe, codex, Path(temp), args.live, args.source_python)
 
 
 if __name__ == '__main__':

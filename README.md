@@ -2,27 +2,38 @@
 
 Route lets you use your OpenAI project key for coding and image generation in local Codex sessions. It runs on your computer. Your project pays for model and image requests. The signed-out macOS CLI has passed the live image check on Sol and Astra. [Qualification record](docs/qualification.md)
 
-## Install and connect
+## Install and connect from the terminal
 
-Route is in development. For a test installer, sign in to GitHub, open the [development builds](https://github.com/samikd35/route-for-codex/actions/workflows/build-installers.yml), choose a completed build, and download and unzip the artifact for your OS. You can also [install directly from source](#run-from-source). A public stable release is pending. Install a compatible Codex client first. The CLI used for qualification was `0.171.0-alpha.13`. To check yours, run `codex --version` and `codex debug models --bundled`. [Install Codex CLI](https://developers.openai.com/codex/cli/)
+Open Terminal on macOS or PowerShell on Windows in the project folder where you want to use Codex. Run one command as your normal user. The installer downloads the public development source, installs its Python environment and relay, and installs OpenAI's Codex CLI if it is missing.
 
-| Platform | With the development installer | Status |
-| --- | --- | --- |
-| Apple Silicon Mac | Open the Route `.pkg` and follow Installer. Open **Route** in Applications. | Unsigned. Clean-machine installer and CLI fixture passed on Apple Silicon. |
-| Debian 13 | In the folder containing the extracted package for your processor, run `sudo apt install ./route-dev-*.deb`. Open **Route for Codex** from the application menu. | Container-tested on amd64 and arm64. Graphical qualification is pending. |
-| Windows | Run `Route-dev-setup.exe` and open **Route for Codex** from Start. | Clean-machine installer and CLI fixture passed on Windows Server 2025 x64. Windows 11 desktop qualification is pending. |
-
-In Route, paste your OpenAI project key, leave **Use Route for new Codex chats** selected, and click **Connect to Codex**. Verification uses two billable model requests. Once the connection test passes, start a **new local chat** in Codex. For example, open a project and ask “Which command runs this project’s tests?”
-
-For terminal setup, open a **fresh terminal** after installing and run the following as your regular user:
+**macOS Terminal**
 
 ```sh
-route-for-codex connect
-route-for-codex status
-codex
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/samikd35/route-for-codex/main/install.sh)"
 ```
 
-At the private key prompt, enter your key and agree to use Route by default. Later, `route-for-codex disconnect` restores your previous Codex settings, `reconnect` uses your saved key, and `forget` deletes Route’s saved key from this computer.
+**Windows PowerShell**
+
+```powershell
+Invoke-RestMethod https://raw.githubusercontent.com/samikd35/route-for-codex/main/install.ps1 | Invoke-Expression
+```
+
+1. Paste your OpenAI project API key at the private terminal prompt. Route checks model access and verifies the connection with two billable model requests.
+2. Answer **y** to **Use Route by default for new Codex sessions?** and wait for **Connection test passed.**
+3. Answer **y** to open Codex in the current folder. Later, open a fresh terminal in any project and run `codex`.
+
+The install runs under your user account. It leaves the system networking command `route` available. Route uses Keychain or Windows Credential Manager for the key and offers session-only use when secure storage is unavailable. Your OpenAI project pays for requests sent through Route.
+
+| From a fresh terminal | Command |
+| --- | --- |
+| Finish or retry terminal setup | `route-for-codex onboard` |
+| Check whether the relay is running | `route-for-codex status` |
+| Change the API key | `route-for-codex replace` |
+| Restore your previous Codex settings | `route-for-codex disconnect` |
+| Restart the CLI-installed relay after login | `route-for-codex reconnect` |
+| Disconnect and remove the locally saved key | `route-for-codex forget` |
+
+To install only, add `-- --install-only` after the macOS command. On Windows run `& ([scriptblock]::Create((Invoke-RestMethod https://raw.githubusercontent.com/samikd35/route-for-codex/main/install.ps1))) -InstallOnly`. Rerun the installer for updates. The desktop development packages are also available from the [installer workflow](https://github.com/samikd35/route-for-codex/actions/workflows/build-installers.yml), including an unsigned Apple Silicon package, a Windows x64 installer and a Debian package. See the [qualification record](docs/qualification.md) for platform coverage.
 
 ## Run from source
 

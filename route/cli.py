@@ -4,7 +4,6 @@ import getpass
 import json
 import os
 from pathlib import Path
-import socket
 import subprocess
 import sys
 import time
@@ -13,7 +12,7 @@ from urllib.error import HTTPError
 from .check import check, http_error
 from .models import discover, selection
 from .images import TOOL_SECONDS
-from .relay import API_PATHS, MATCH_PATH, CADDY, Relay, configuration, control
+from .relay import API_PATHS, MATCH_PATH, CADDY, Relay, admin_socket, configuration, control
 from .settings import change, config, write
 
 
@@ -86,14 +85,19 @@ class Session:
         write(self.file, json.dumps(self.state))
 
     def active(self):
-        if sys.platform == 'win32':
+        if sys.platform == 'win32' and CADDY.with_name('control.exe').is_file():
             return self.admin.exists() and subprocess.run([CADDY.with_name('control.exe'), self.admin, 'ping'], creationflags=subprocess.CREATE_NO_WINDOW).returncode == 0
-        with socket.socket(socket.AF_UNIX) as sock:
-            try:
-                sock.connect(str(self.admin))
+        if not self.admin.exists():
+            return False
+        try:
+            with admin_socket(self.admin):
                 return True
-            except (FileNotFoundError, ConnectionRefusedError):
+        except (FileNotFoundError, ConnectionRefusedError):
+            return False
+        except OSError as exc:
+            if getattr(exc, 'winerror', None) == 10061:
                 return False
+            raise
 
     def start(self, key):
         self.admin.unlink(missing_ok=True)
@@ -193,6 +197,14 @@ class Prompt:
 def execute(s, action, prompt, *, initial_key=None, make_default=None):
     state = s.state
     active = s.active()
+    if action == 'onboard':
+        if not active and state.get('saved') and state.get('model'):
+            execute(s, 'reconnect', prompt)
+            active = True
+        if active and state.get('model'):
+            action = 'test'
+        else:
+            action = 'replace' if active else 'connect'
     if action == 'status':
         if active:
             return 'Connected.'
@@ -328,7 +340,7 @@ def main():
     p = argparse.ArgumentParser(prog='route-for-codex')
     p.add_argument('--home', help=argparse.SUPPRESS)
     p.add_argument('--relay-port', type=int, default=PORT, help=argparse.SUPPRESS)
-    actions = ('connect', 'test', 'select', 'replace', 'disconnect', 'reconnect', 'forget', 'status', 'setup', 'login', 'token', 'images-mcp')
+    actions = ('connect', 'test', 'select', 'replace', 'disconnect', 'reconnect', 'forget', 'status', 'setup', 'login', 'token', 'images-mcp', 'onboard')
     p.add_argument('action', choices=actions, nargs='?', default='setup')
     args = p.parse_args()
     if args.home:
@@ -402,6 +414,8 @@ def main():
             show_setup()
             root.mainloop()
         else:
+            if args.action == 'onboard':
+                print('Route verifies your connection with two billable model requests. Your OpenAI project pays for chats through Route.', flush=True)
             with locked(s):
                 print(execute(s, args.action, Prompt()))
     except HTTPError as exc:

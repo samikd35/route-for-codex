@@ -77,16 +77,46 @@ class Relay:
                 self.process.wait()
 
 
+def admin_socket(admin):
+    """Open the private filesystem socket, including on CPython for Windows."""
+    if sys.platform != 'win32':
+        sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        try:
+            sock.settimeout(10)
+            sock.connect(str(admin))
+            return sock
+        except BaseException:
+            sock.close()
+            raise
+
+    # Winsock supports AF_UNIX even on Python builds without its address converter.
+    import ctypes
+    import struct
+    path = str(admin).encode('utf-8')
+    if len(path) >= 108:
+        raise OSError('Route home path exceeds the Windows socket path limit')
+    address = struct.pack('=H108s', 1, path)
+    ws = ctypes.WinDLL('ws2_32')
+    ws.connect.argtypes = [ctypes.c_size_t, ctypes.c_char_p, ctypes.c_int]
+    sock = socket.socket(1, socket.SOCK_STREAM)
+    try:
+        if ws.connect(sock.fileno(), address, len(address)):
+            raise ctypes.WinError(ws.WSAGetLastError())
+        sock.settimeout(10)
+        return sock
+    except BaseException:
+        sock.close()
+        raise
+
+
 def control(admin, path, config=None):
-    if sys.platform == 'win32':
+    if sys.platform == 'win32' and CADDY.with_name('control.exe').is_file():
         subprocess.run([CADDY.with_name('control.exe'), str(admin), path],
                        input=json.dumps(config).encode() if config else b'', check=True, creationflags=subprocess.CREATE_NO_WINDOW)
         return
     conn = http.client.HTTPConnection('localhost', timeout=10)
     try:
-        conn.sock = socket.socket(socket.AF_UNIX)
-        conn.sock.settimeout(10)
-        conn.sock.connect(str(admin))
+        conn.sock = admin_socket(admin)
         conn.request('PATCH' if path == MATCH_PATH else 'POST', path, json.dumps(config) if config else b'', {'Content-Type': 'application/json'})
         if conn.getresponse().status != 200:
             raise RuntimeError('Caddy rejected the control request')

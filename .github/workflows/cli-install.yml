@@ -1,0 +1,61 @@
+name: Install from the terminal
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'install.sh'
+      - 'install.ps1'
+      - 'tools/install_cli.py'
+      - 'route/**'
+      - 'pyproject.toml'
+      - 'tests/installed.py'
+      - '.github/workflows/cli-install.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  install:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    env:
+      ROUTE_INSTALL_REF: ${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Route and Codex from the public macOS command
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          bash -c "$(curl -fsSL "https://raw.githubusercontent.com/$GITHUB_REPOSITORY/$GITHUB_SHA/install.sh")" -- --install-only
+          /bin/zsh -lic 'command -v route-for-codex && route-for-codex status && codex --version'
+          echo "$HOME/.local/share/route-for-codex/bin" >> "$GITHUB_PATH"
+      - name: Install Route and Codex from the public Windows command
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: |
+          & ([scriptblock]::Create((Invoke-RestMethod "https://raw.githubusercontent.com/$env:GITHUB_REPOSITORY/$env:GITHUB_SHA/install.ps1"))) -InstallOnly
+          $env:Path = [Environment]::GetEnvironmentVariable('Path','Machine') + ';' + [Environment]::GetEnvironmentVariable('Path','User')
+          if ((route-for-codex status) -ne 'Disconnected.' -or $LASTEXITCODE -ne 0) { throw 'Fresh PATH status failed' }
+          codex --version
+          if ($LASTEXITCODE -ne 0) { throw 'Codex was missing from PATH' }
+          "$env:LOCALAPPDATA\RouteForCodexCLI\bin" | Out-File $env:GITHUB_PATH -Append -Encoding utf8
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Verify first-run setup and stock Codex through Route
+        shell: pwsh
+        run: |
+          if ($IsMacOS) {
+            $data = "$HOME/.local/share/route-for-codex"
+            $python = (Get-Item "$data/versions/*/tools/route-for-codex/bin/python").FullName
+            $cli = "$data/bin/route-for-codex"
+          } else {
+            $data = "$env:LOCALAPPDATA/RouteForCodexCLI"
+            $python = (Get-Item "$data/versions/*/tools/route-for-codex/Scripts/python.exe").FullName
+            $cli = "$data/bin/route-for-codex.cmd"
+          }
+          python -m tests.installed $cli --source-python $python
