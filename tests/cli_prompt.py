@@ -9,7 +9,8 @@ def main():
     ref = os.environ['ROUTE_INSTALL_REF']
     prefix = f'https://raw.githubusercontent.com/samikd35/route-for-codex/{ref}/install.'
     if os.name == 'nt':
-        command = ['powershell.exe', '-NoProfile', '-Command',
+        # The first install step uses Windows PowerShell 5.1. Exercise PowerShell 7 here.
+        command = ['pwsh', '-NoProfile', '-Command',
                    f"Invoke-RestMethod '{prefix}ps1' | Invoke-Expression"]
     else:
         command = ['bash', '-c', f'bash -c "$(curl -fsSL {prefix}sh)"']

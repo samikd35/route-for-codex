@@ -62,13 +62,19 @@ def install_codex(bindir, work):
         print(f'Installing OpenAI Codex CLI {CODEX_VERSION}…', flush=True)
         download(f'https://github.com/openai/codex/releases/download/rust-v{CODEX_VERSION}/{name}', installer, digest)
         cmd = ['powershell.exe', '-NoProfile', '-File'] if WINDOWS else ['/bin/sh']
-        subprocess.run([*cmd, installer], env=dict(os.environ, CODEX_RELEASE=CODEX_VERSION,
-                       CODEX_NON_INTERACTIVE='1', CODEX_INSTALL_DIR=str(bindir)), check=True)
+        env = dict(os.environ, CODEX_RELEASE=CODEX_VERSION, CODEX_NON_INTERACTIVE='1',
+                   CODEX_INSTALL_DIR=str(bindir))
+        if WINDOWS:
+            # A caller running pwsh may export its PowerShell 7 modules to Windows PowerShell 5.1.
+            env.pop('PSMODULEPATH', None)
+        subprocess.run([*cmd, installer], env=env, check=True)
         found = shutil.which('codex')
     if not found:
         raise RuntimeError('The Codex installer did not provide a codex command')
     # The setup flow uses this capability to discover models accessible to the key.
-    subprocess.run([found, 'debug', 'models', '--bundled'], stdout=subprocess.DEVNULL, check=True)
+    if subprocess.run([found, 'debug', 'models', '--bundled'], stdout=subprocess.DEVNULL).returncode:
+        raise RuntimeError(f'Codex at {found} could not read its bundled model catalog. '
+                           'Run codex debug models --bundled for details, fix or update Codex, then rerun this installer.')
     return found
 
 

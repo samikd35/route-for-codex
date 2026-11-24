@@ -9,6 +9,7 @@ on:
       - 'route/**'
       - 'pyproject.toml'
       - 'tests/installed.py'
+      - 'tests/cli_prompt.py'
       - '.github/workflows/cli-install.yml'
 
 permissions:

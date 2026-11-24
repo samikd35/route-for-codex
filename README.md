@@ -61,8 +61,8 @@ The [combined-picker proof](docs/combined-picker-proof.md) runs separately in a 
 
 ## Generate an image using only your API key
 
-1. From this checkout, run `.venv/bin/route-for-codex connect`, enter your project key and select **Use Route by default**. If you already connected with the previous source build, install the updated dependencies with `.venv/bin/python -m pip install -e .` and run `.venv/bin/route-for-codex reconnect` to register the image tool. The key needs access to the selected coding model and `gpt-image-2`.
-2. Restart Codex and open a fresh local workspace. Choose Sol or Astra from the Route provider. In either client, ask **Use Route’s generate_image tool to create a red kite above a blue lake. Save it as kite.png and make an index.html that displays it.** Approve the tool call if prompted. Each generation uses your API project.
+1. If Route is already connected, continue to step 2. Otherwise run `route-for-codex onboard` and choose Route for new chats. Your key needs access to the selected coding model and `gpt-image-2`.
+2. Run `codex` in a project folder. Ask **Use Route’s generate_image tool to create a red kite above a blue lake. Save it as kite.png and make an index.html that displays it.** Approve the tool call if prompted. Each generation uses your OpenAI project.
 3. Open the resulting `index.html` and confirm the illustration is visible. The [repeatable image check and results](docs/api-key-only-images.md) include the exact qualification prompt and verified image hashes.
 
 ## Development installers
