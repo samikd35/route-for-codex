@@ -14,4 +14,4 @@ The command installs the public source snapshot under the current user. Native p
 
 2026-11-24 · Both [fresh CLI installs](https://github.com/samikd35/route-for-codex/actions/runs/45307759320) passed key prompting, credential recovery, a signed-out fixture reply, cancellation and repeat installation.
 
-2026-11-24 · Add a single GitHub-backed `npx` command for Mac and Windows. Retain the direct installers for machines without Node.js or Git. Exercise both paths on fresh runners.
+2026-11-24 · The GitHub-backed `npx` command and the direct installers passed on fresh macOS and Windows runners. All four jobs checked command discovery, a signed-out Codex fixture reply and cancellation at the private key prompt. [Test run](https://github.com/samikd35/route-for-codex/actions/runs/45309585249)
